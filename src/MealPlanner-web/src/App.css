@@ -1,0 +1,21 @@
+
+.meal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.meal-grid > section {
+  border: 1px solid #888;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 0;
+}
+
+.meal-grid article {
+  border: 1px solid #888;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+}
