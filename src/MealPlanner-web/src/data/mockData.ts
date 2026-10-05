@@ -33,7 +33,9 @@ export const recipes: Recipe[] = [
       { ingredientId: 'bread', amountGrams: 80 },
       { ingredientId: 'cheese', amountGrams: 30 },
     ],
-    instructions: 'Place cheese on the bread and toast until melted',
+    instructions: `1. Place the bread on baking tray.
+    2. Add the cheese 
+    3. Toast until the cheese has melted`,
   },
   {
     id: 'bread-and-milk',

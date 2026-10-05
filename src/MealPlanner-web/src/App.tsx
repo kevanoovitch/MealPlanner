@@ -1,42 +1,13 @@
 import "./App.css";
-import type { ReactNode } from "react";
+import RecipeCard from './components/RecipeCard.tsx'
+import MealColumn from './components/MealColumn.tsx'
 
 import { recipes as mockRecipes, ingredients } from "./data/mockData";
 import { calculateRecipeNutrition } from "./utils/nutrition";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
-type RecipeCardProps = {
-  name: string;
-  calories: number;
-  protein: number;
-  quantity: number;
-  onRemove: () => void
-  onIncrease: () => void
-  onDecrease: () => void
-};
 
-function RecipeCard({ name, calories, protein, quantity, onDecrease, onIncrease, onRemove }: RecipeCardProps) {
-  return (
-    <article>
-      <h3>{name}</h3>
-      <div>
-        <button onClick={onDecrease}
-          disabled={quantity <= 1}
-          aria-label={"Decrease servings of ${name}"}
-        >-</button>
-        <span> servings: {quantity} </span>
-
-        <button onClick={onIncrease} aria-label={"Increase servings of ${name}"}>
-          +
-        </button>
-      </div>
-      <p>Calories: {calories.toFixed(0)} kcal</p>
-      <p>Protein: {protein.toFixed(1)} g</p>
-      <button onClick={onRemove}>Remove</button>
-    </article>
-  );
-}
 
 const recipes = mockRecipes.map((recipe) => {
   const nutrition = calculateRecipeNutrition(recipe, ingredients);
@@ -60,19 +31,6 @@ const initialMeals = [
   { id: "snack-2", title: "Snack 2", recipes: [] },
 ];
 
-type MealColumnProps = {
-  title: string;
-  children?: ReactNode;
-};
-
-function MealColumn({ title, children }: MealColumnProps) {
-  return (
-    <section>
-      <h2>{title}</h2>
-      {children}
-    </section>
-  );
-}
 const dailyTargets = {
   calories: 2500,
   protein: 180,
@@ -80,7 +38,28 @@ const dailyTargets = {
 
 function App() {
 
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null)
+
+  const selectedRecipe = mockRecipes.find(
+    (recipe) => recipe.id === selectedRecipeId,
+  )
+
+  const detailsRef = useRef<HTMLDialogElement>(null)
   const [meals, setMeals] = useState(initialMeals);
+
+  useEffect(() => {
+    const dialog = detailsRef.current
+
+    if (!dialog) {
+      return
+    }
+
+    if (selectedRecipe && !dialog.open) {
+      dialog.showModal()
+    } else if (!selectedRecipe && dialog.open) {
+      dialog.close()
+    }
+  }, [selectedRecipe])
 
   // ### Change quantity ### 
 
@@ -177,7 +156,7 @@ function App() {
     <main>
       <h1>Meal Planner</h1>
 
-      <div>
+      <div className="nutrition-summary">
         <label htmlFor="calorie-progress">
           Calories: {dailyTotals.calories.toFixed(0)} / {dailyTargets.calories}{" "}
           kcal
@@ -192,7 +171,7 @@ function App() {
           Protein: {dailyTotals.protein.toFixed(1)} / {dailyTargets.protein} g
         </label>
         <progress
-          id="proteie-progress"
+          id="protein-progress"
           value={dailyTotals.protein}
           max={dailyTargets.protein}
         />
@@ -212,6 +191,7 @@ function App() {
                 onRemove={() => removeRecipe(meal.id, recipe.id)}
                 onIncrease={() => changeQuantity(meal.id, recipe.id, 1)}
                 onDecrease={() => changeQuantity(meal.id, recipe.id, -1)}
+                onViewDetails={() => setSelectedRecipeId(recipe.id)}
               />
             ))}
 
@@ -247,6 +227,45 @@ function App() {
           </MealColumn>
         ))}
       </div>
+
+
+      {selectedRecipe && (
+
+        <dialog ref={detailsRef} onCancel={() => setSelectedRecipeId(null)} aria-labelledby="recipe-details.title">
+          {selectedRecipe && (
+            <>
+
+              <h2 id="recipe-details-title">{selectedRecipe.name}</h2>
+
+              <h3>Instructions</h3>
+              <p className="recipe-instructions">
+                {selectedRecipe.instructions}
+              </p>
+              <p>Makes {selectedRecipe.servings} serving(s)</p>
+
+              <ul>
+                {selectedRecipe.ingredients.map((item) => {
+                  const ingredient = ingredients.find((ingredient) => ingredient.id === item.ingredientId,
+                  )
+
+                  return (
+                    <li key={item.ingredientId}>
+                      {ingredient?.name ?? 'Unkown ingredient'}: {item.amountGrams} g
+                    </li>
+                  )
+                }
+                )}
+              </ul>
+
+              <button onClick={() => setSelectedRecipeId(null)}>
+                Close details
+              </button>
+            </>
+          )}
+        </dialog>
+      )}
+
+
     </main>
   );
 }
