@@ -1,6 +1,7 @@
 import "./App.css";
 import RecipeCard from './components/RecipeCard.tsx'
 import MealColumn from './components/MealColumn.tsx'
+import RecipePicker from './components/RecipePicker.tsx'
 
 import { recipes as mockRecipes, ingredients } from "./data/mockData";
 import { calculateRecipeNutrition } from "./utils/nutrition";
@@ -31,7 +32,7 @@ const initialMeals = [
   { id: "snack-2", title: "Snack 2", recipes: [] },
 ];
 
-const dailyTargets = {
+const initialTargets = {
   calories: 2500,
   protein: 180,
 };
@@ -46,6 +47,37 @@ function App() {
 
   const detailsRef = useRef<HTMLDialogElement>(null)
   const [meals, setMeals] = useState(initialMeals);
+
+  const [dailyTargets, setDailyTargets] = useState(() => {
+
+    try {
+      const stored = localStorage.getItem('mealplanner.targets')
+
+      if (!stored) {
+        return initialTargets
+      }
+
+      const parsed = JSON.parse(stored)
+
+      if (
+        typeof parsed?.calories === 'number' &&
+        Number.isFinite(parsed.calories) &&
+        parsed.calories > 0 &&
+        typeof parsed?.protein === 'number' &&
+        Number.isFinite(parsed.protein) &&
+        parsed.protein > 0
+      ) {
+        return {
+          calories: parsed.calories,
+          protein: parsed.protein,
+        }
+      }
+    } catch {
+      // Fall back to defaults if storage is unavailable or invalid
+    }
+    return initialTargets
+  })
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     const dialog = detailsRef.current
@@ -149,12 +181,83 @@ function App() {
     { calories: 0, protein: 0 },
   );
 
+  // ### Persistence of top bar values and settings ### 
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mealplanner.targets',
+        JSON.stringify(dailyTargets),
+      )
+    } catch {
+      console.warn('Could not save targets in this browser')
+    }
+  })
 
 
 
   return (
     <main>
       <h1>Meal Planner</h1>
+
+      <button
+        onClick={() => setSettingsOpen((open) => !open)}
+        aria-expanded={settingsOpen}
+      >
+        Settings
+      </button>
+
+      {settingsOpen && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+
+            const formData = new FormData(event.currentTarget)
+            const calories = Number(formData.get('calories'))
+            const protein = Number(formData.get('protein'))
+
+            if (
+              !Number.isFinite(calories) ||
+              !Number.isFinite(protein) ||
+              calories <= 0 ||
+              protein <= 0
+            ) {
+              return
+            }
+
+            setDailyTargets({ calories, protein })
+            setSettingsOpen(false)
+          }}
+        >
+
+          <label>
+
+            Daily calories (kcal)
+            <input
+              name="calories"
+              type="number"
+              min="1"
+              step="1"
+              required
+              defaultValue={dailyTargets.calories}
+            />
+          </label>
+
+          <label>
+
+            Daily Protein (g)
+            <input
+              name="protein"
+              type="number"
+              min="1"
+              step="1"
+              required
+              defaultValue={dailyTargets.protein}
+            />
+          </label>
+          <button type="submit">Save targets</button>
+
+        </form>
+      )}
 
       <div className="nutrition-summary">
         <label htmlFor="calorie-progress">
@@ -195,34 +298,11 @@ function App() {
               />
             ))}
 
-            <label>
-              Add recipe
-              <select value=""
-                onChange={(event) => {
-                  const recipeId = event.target.value
-
-                  if (recipeId) {
-                    addRecipe(meal.id, recipeId)
-                  }
-                }}
-              >
-                <option value="" disabled>
-                  Choose a recipe...
-                </option>
-
-                {recipes.map((recipe) => (
-                  <option
-                    key={recipe.id}
-                    value={recipe.id}
-                    disabled={meal.recipes.some(
-                      (plannedRecipe) => plannedRecipe.id === recipe.id,
-                    )}
-                  >
-                    {recipe.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <RecipePicker
+              recipes={recipes}
+              selectedRecipeIds={meal.recipes.map((recipe) => recipe.id)}
+              onAdd={(recipeId) => addRecipe(meal.id, recipeId)}
+            />
 
           </MealColumn>
         ))}
