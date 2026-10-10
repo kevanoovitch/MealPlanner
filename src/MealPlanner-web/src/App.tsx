@@ -9,7 +9,6 @@ import { calculateRecipeNutrition } from "./utils/nutrition";
 import { useState, useEffect, useRef } from "react";
 
 
-
 const recipes = mockRecipes.map((recipe) => {
   const nutrition = calculateRecipeNutrition(recipe, ingredients);
 
@@ -21,21 +20,58 @@ const recipes = mockRecipes.map((recipe) => {
   };
 });
 
-const initialMeals = [
+type PlannedRecipe = {
+  recipeId: string
+  quantity: number
+}
+
+type Meal = {
+  id: string
+  title: string
+  recipes: PlannedRecipe[]
+}
+const initialMeals: Meal[] = [
   {
-    id: "Breakfast", title: "Breakfast", recipes: recipes.map((recipe) => ({ ...recipe, quantity: 1, }
-    ))
+    id: 'Breakfast',
+    title: 'Breakfast',
+    recipes: [],
   },
-  { id: "snack-1", title: "Snack 1", recipes: [] },
-  { id: "lunch", title: "Lunch", recipes: [] },
-  { id: "dinner", title: "Dinner", recipes: [] },
-  { id: "snack-2", title: "Snack 2", recipes: [] },
-];
+  { id: 'snack-1', title: 'Snack 1', recipes: [] },
+  { id: 'lunch', title: 'Lunch', recipes: [] },
+  { id: 'dinner', title: 'Dinner', recipes: [] },
+  { id: 'snack-2', title: 'Snack 2', recipes: [] },
+
+]
 
 const initialTargets = {
   calories: 2500,
   protein: 180,
 };
+
+function isMealPlan(value: unknown): value is Meal[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (meal) =>
+        meal !== null &&
+        typeof meal === 'object' &&
+        typeof meal.id === 'string' &&
+        typeof meal.title === 'string' &&
+        Array.isArray(meal.recipes) &&
+        meal.recipes.every(
+          (item: unknown) =>
+            item != null &&
+            typeof item === 'object' &&
+            'recipeId' in item &&
+            typeof item.recipeId === 'string' &&
+            'quantity' in item &&
+            typeof item.quantity === 'number' &&
+            Number.isSafeInteger(item.quantity) &&
+            item.quantity >= 1,
+        ),
+    )
+  )
+}
 
 function App() {
 
@@ -46,7 +82,23 @@ function App() {
   )
 
   const detailsRef = useRef<HTMLDialogElement>(null)
-  const [meals, setMeals] = useState(initialMeals);
+
+  const [meals, setMeals] = useState<Meal[]>(() => {
+    try {
+      const stored = localStorage.getItem('mealplanner.meals')
+
+      if (stored !== null) {
+        const parsed: unknown = JSON.parse(stored)
+
+        if (isMealPlan(parsed)) {
+          return parsed
+        }
+      }
+    } catch {
+      console.warn('Could not load saved meals.')
+    }
+    return initialMeals
+  })
 
   const [dailyTargets, setDailyTargets] = useState(() => {
 
@@ -79,6 +131,25 @@ function App() {
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
 
+  const displayedMeals = meals.map((meal) => ({
+    ...meal,
+    recipes: meal.recipes.flatMap((plannedRecipe) => {
+      const recipe = recipes.find(
+        (recipe) => recipe.id === plannedRecipe.recipeId,
+      )
+
+      if (!recipe) {
+        return []
+      }
+
+      return [{
+        ...recipe,
+        quantity: plannedRecipe.quantity,
+      }]
+    }),
+  }))
+
+
   useEffect(() => {
     const dialog = detailsRef.current
 
@@ -108,7 +179,7 @@ function App() {
       return {
         ...meal,
         recipes: meal.recipes.map((recipe) => {
-          if (recipe.id !== recipeId) {
+          if (recipe.recipeId !== recipeId) {
             return recipe
           }
 
@@ -125,28 +196,39 @@ function App() {
   // ### Adding button ### 
 
   function addRecipe(mealId: string, recipeId: string) {
-    const recipeToAdd = recipes.find((recipe) => recipe.id === recipeId);
+    // Look up the recipe in the catalog: it has an "id", 
+    const recipeToAdd = recipes.find(
+      (recipe) => recipe.id === recipeId,
+    )
 
     if (!recipeToAdd) {
-      return;
+      return
     }
 
     setMeals((currentMeals) =>
       currentMeals.map((meal) => {
         if (meal.id !== mealId) {
-          return meal;
+          return meal
         }
 
-        if (meal.recipes.some((recipe) => recipe.id === recipeId)) {
-          return meal;
+        // A placement inside a meal has a "recipeId"
+        const alreadyAdded = meal.recipes.some(
+          (plannedRecipe) => plannedRecipe.recipeId === recipeId,
+        )
+
+        if (alreadyAdded) {
+          return meal
         }
 
         return {
           ...meal,
-          recipes: [...meal.recipes, { ...recipeToAdd, quantity: 1 }],
-        };
+          recipes: [
+            ...meal.recipes,
+            { recipeId: recipeToAdd.id, quantity: 1 },
+          ],
+        }
       }),
-    );
+    )
   }
 
   // ### Remove button ### 
@@ -161,7 +243,7 @@ function App() {
         return {
           ...meal,
           recipes: meal.recipes.filter(
-            (recipe) => recipe.id !== recipeId
+            (recipe) => recipe.recipeId !== recipeId
           ),
         }
       }),
@@ -169,7 +251,7 @@ function App() {
   }
 
   // ### Totals overhead bar ### 
-  const dailyTotals = meals.reduce(
+  const dailyTotals = displayedMeals.reduce(
     (totals, meal) => {
       for (const recipe of meal.recipes) {
         totals.calories += recipe.calories * recipe.quantity;
@@ -192,6 +274,14 @@ function App() {
       console.warn('Could not save targets in this browser')
     }
   })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mealplanner.meals', JSON.stringify(meals),)
+    } catch {
+      console.warn('Could not save meals in this browser.')
+    }
+  }, [meals])
 
 
 
@@ -282,7 +372,7 @@ function App() {
 
 
       <div className="meal-grid">
-        {meals.map((meal) => (
+        {displayedMeals.map((meal) => (
           <MealColumn key={meal.id} title={meal.title}>
             {meal.recipes.map((recipe) => (
               <RecipeCard
