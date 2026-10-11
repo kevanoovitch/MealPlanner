@@ -1,4 +1,5 @@
 
+import type { DragEventHandler } from "react"
 
 type RecipeCardProps = {
   name: string;
@@ -9,11 +10,18 @@ type RecipeCardProps = {
   onIncrease: () => void
   onDecrease: () => void
   onViewDetails: () => void
+  onDragStart: DragEventHandler<HTMLElement>
+  onDragEnd: DragEventHandler<HTMLElement>
 };
 
-function RecipeCard({ name, calories, protein, quantity, onDecrease, onIncrease, onRemove, onViewDetails }: RecipeCardProps) {
+function RecipeCard({ name, calories, protein, quantity, onDecrease, onIncrease, onRemove, onViewDetails, onDragStart, onDragEnd }: RecipeCardProps) {
   return (
-    <article className="recipe-card">
+    <article
+      className="recipe-card"
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
       <h3>{name}</h3>
       <div>
         <button onClick={onDecrease}

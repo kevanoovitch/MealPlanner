@@ -7,6 +7,7 @@ import { recipes as mockRecipes, ingredients } from "./data/mockData";
 import { calculateRecipeNutrition } from "./utils/nutrition";
 
 import { useState, useEffect, useRef } from "react";
+import NutritionBar from "./components/NutritionBar.tsx";
 
 
 const recipes = mockRecipes.map((recipe) => {
@@ -76,6 +77,11 @@ function isMealPlan(value: unknown): value is Meal[] {
 function App() {
 
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null)
+
+  const [draggedRecipe, setDraggedRecipe] = useState<{
+    mealId: string
+    recipeId: string
+  } | null>(null)
 
   const selectedRecipe = mockRecipes.find(
     (recipe) => recipe.id === selectedRecipeId,
@@ -193,6 +199,67 @@ function App() {
   }
 
 
+  // ### Drag move func ### 
+
+  function moveRecipe(
+    sourceMealId: string,
+    targetMealId: string,
+    recipeId: string
+  ) {
+    if (sourceMealId == targetMealId) {
+      return
+    }
+
+    setMeals((currentMeals) => {
+      const source = currentMeals.find((meal) => meal.id === sourceMealId)
+      const movingRecipe = source?.recipes.find(
+        (recipe) => recipe.recipeId === recipeId,
+      )
+
+      if (
+        !movingRecipe ||
+        !currentMeals.some((meal) => meal.id === targetMealId)
+      ) {
+        return currentMeals
+      }
+
+      return currentMeals.map((meal) => {
+        if (meal.id === sourceMealId) {
+          return {
+            ...meal,
+            recipes: meal.recipes.filter(
+              (recipes) => recipes.recipeId !== recipeId,
+            ),
+          }
+        }
+
+
+        if (meal.id === targetMealId) {
+          const alreadyAdded = meal.recipes.some(
+            (recipe) => recipe.recipeId === recipeId,
+          )
+
+          return {
+            ...meal,
+            recipes: alreadyAdded
+              ? meal.recipes.map((recipe) =>
+                recipe.recipeId === recipeId
+                  ? {
+                    ...recipe,
+                    quantity: recipe.quantity + movingRecipe?.quantity,
+                  }
+                  : recipe,
+              )
+              : [...meal.recipes, { ...movingRecipe }],
+          }
+        }
+
+        return meal
+      })
+    })
+  }
+
+
   // ### Adding button ### 
 
   function addRecipe(mealId: string, recipeId: string) {
@@ -251,6 +318,26 @@ function App() {
   }
 
   // ### Totals overhead bar ### 
+
+  const mealColors: Record<string, string> = {
+    Breakfast: '#d97706',
+    'snack-1': '#7c3aed',
+    lunch: '#0281c7',
+    dinner: '#059669',
+    'snack-2': '#db2777',
+  }
+
+  const mealNutrition = displayedMeals.map((meal) => ({
+    id: meal.id,
+    title: meal.title,
+    color: mealColors[meal.id] ?? '#64748b',
+    calories: meal.recipes.reduce(
+      (total, recipe) => total + recipe.calories * recipe.quantity, 0,),
+    protein: meal.recipes.reduce(
+      (total, recipe) => total + recipe.protein * recipe.quantity, 0,),
+  }))
+
+
   const dailyTotals = displayedMeals.reduce(
     (totals, meal) => {
       for (const recipe of meal.recipes) {
@@ -350,30 +437,48 @@ function App() {
       )}
 
       <div className="nutrition-summary">
-        <label htmlFor="calorie-progress">
-          Calories: {dailyTotals.calories.toFixed(0)} / {dailyTargets.calories}{" "}
-          kcal
-        </label>
-        <progress
-          id="calorie-progress"
-          value={dailyTotals.calories}
-          max={dailyTargets.calories}
+
+        <NutritionBar
+          label="Calories"
+          unit="kcal"
+          target={dailyTargets.calories}
+          segments={mealNutrition.map((meal) => ({
+            ...meal,
+            value: meal.calories,
+          }))}
         />
 
-        <label htmlFor="protein-progress">
-          Protein: {dailyTotals.protein.toFixed(1)} / {dailyTargets.protein} g
-        </label>
-        <progress
-          id="protein-progress"
-          value={dailyTotals.protein}
-          max={dailyTargets.protein}
+        <NutritionBar
+          label="Protein"
+          unit="g"
+          target={dailyTargets.protein}
+          segments={mealNutrition.map((meal) => ({
+            ...meal,
+            value: meal.protein,
+          }))}
         />
       </div>
 
 
       <div className="meal-grid">
         {displayedMeals.map((meal) => (
-          <MealColumn key={meal.id} title={meal.title}>
+          <MealColumn
+            key={meal.id}
+            title={meal.title}
+            color={mealColors[meal.id] ?? '#64748b'}
+            canDrop={draggedRecipe !== null && draggedRecipe.mealId !== meal.id}
+            onDrop={(event) => {
+              event.preventDefault()
+
+              if (draggedRecipe) {
+                moveRecipe(draggedRecipe.mealId, meal.id, draggedRecipe.recipeId)
+                setDraggedRecipe(null)
+              }
+            }}
+          >
+
+
+
             {meal.recipes.map((recipe) => (
               <RecipeCard
                 key={recipe.id}
@@ -385,6 +490,12 @@ function App() {
                 onIncrease={() => changeQuantity(meal.id, recipe.id, 1)}
                 onDecrease={() => changeQuantity(meal.id, recipe.id, -1)}
                 onViewDetails={() => setSelectedRecipeId(recipe.id)}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'move'
+                  event.dataTransfer.setData('text/plain', recipe.id)
+                  setDraggedRecipe({ mealId: meal.id, recipeId: recipe.id })
+                }}
+                onDragEnd={() => setDraggedRecipe(null)}
               />
             ))}
 
@@ -399,44 +510,46 @@ function App() {
       </div>
 
 
-      {selectedRecipe && (
+      {
+        selectedRecipe && (
 
-        <dialog ref={detailsRef} onCancel={() => setSelectedRecipeId(null)} aria-labelledby="recipe-details.title">
-          {selectedRecipe && (
-            <>
+          <dialog ref={detailsRef} onCancel={() => setSelectedRecipeId(null)} aria-labelledby="recipe-details.title">
+            {selectedRecipe && (
+              <>
 
-              <h2 id="recipe-details-title">{selectedRecipe.name}</h2>
+                <h2 id="recipe-details-title">{selectedRecipe.name}</h2>
 
-              <h3>Instructions</h3>
-              <p className="recipe-instructions">
-                {selectedRecipe.instructions}
-              </p>
-              <p>Makes {selectedRecipe.servings} serving(s)</p>
+                <h3>Instructions</h3>
+                <p className="recipe-instructions">
+                  {selectedRecipe.instructions}
+                </p>
+                <p>Makes {selectedRecipe.servings} serving(s)</p>
 
-              <ul>
-                {selectedRecipe.ingredients.map((item) => {
-                  const ingredient = ingredients.find((ingredient) => ingredient.id === item.ingredientId,
-                  )
+                <ul>
+                  {selectedRecipe.ingredients.map((item) => {
+                    const ingredient = ingredients.find((ingredient) => ingredient.id === item.ingredientId,
+                    )
 
-                  return (
-                    <li key={item.ingredientId}>
-                      {ingredient?.name ?? 'Unkown ingredient'}: {item.amountGrams} g
-                    </li>
-                  )
-                }
-                )}
-              </ul>
+                    return (
+                      <li key={item.ingredientId}>
+                        {ingredient?.name ?? 'Unkown ingredient'}: {item.amountGrams} g
+                      </li>
+                    )
+                  }
+                  )}
+                </ul>
 
-              <button onClick={() => setSelectedRecipeId(null)}>
-                Close details
-              </button>
-            </>
-          )}
-        </dialog>
-      )}
+                <button onClick={() => setSelectedRecipeId(null)}>
+                  Close details
+                </button>
+              </>
+            )}
+          </dialog>
+        )
+      }
 
 
-    </main>
+    </main >
   );
 }
 
