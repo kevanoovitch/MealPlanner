@@ -6,6 +6,8 @@ type MealColumnProps = {
   children?: ReactNode;
   color: string;
   canDrop: boolean;
+  calories: number;
+  protein: number;
   onDrop: DragEventHandler<HTMLElement>
 };
 
@@ -15,6 +17,8 @@ function MealColumn({
   canDrop,
   onDrop,
   color,
+  calories,
+  protein,
 }: MealColumnProps) {
   return (
     <section
@@ -35,6 +39,11 @@ function MealColumn({
         />
         {title}
       </h2>
+      <p className="meal-subtotal">
+        {calories.toFixed(0)} kcal
+        {' . '}
+        {protein.toFixed(1)} g protein
+      </p>
       {children}
     </section>
   )

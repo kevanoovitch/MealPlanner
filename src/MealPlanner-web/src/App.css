@@ -59,6 +59,18 @@
   margin-right: 8px;
 }
 
+.recipe-card.recipe-card-attention {
+  border-color: #f59e0b;
+  box-shadow: inset 4px 0 0 #f59e0b;
+}
+
+.recipe-attention-label {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
 
 .recipe-instructions {
   white-space: pre-wrap;
@@ -147,6 +159,17 @@ dialog::backdrop {
   height: 24px
 }
 
+.nutrition-goal-reached {
+  color: var(--text-h);
+  font-weight: 600;
+  color: #4ade80;
+}
+
+.nutrition-over-budget {
+  color: #f87171;
+  font-weight: 600;
+}
+
 .meal-heading {
 
   display: flex;
@@ -161,6 +184,11 @@ dialog::backdrop {
   flex-shrink: 0;
 }
 
+.meal-subtotal {
+  margin: 0 0 16px;
+  font-size: 0.85rem;
+  color: var(--text);
+}
 
 
 

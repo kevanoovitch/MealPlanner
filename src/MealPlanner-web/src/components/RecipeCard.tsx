@@ -6,6 +6,8 @@ type RecipeCardProps = {
   calories: number;
   protein: number;
   quantity: number;
+  highlightCalories: boolean;
+  dailyCalories: number;
   onRemove: () => void
   onIncrease: () => void
   onDecrease: () => void
@@ -14,11 +16,19 @@ type RecipeCardProps = {
   onDragEnd: DragEventHandler<HTMLElement>
 };
 
-function RecipeCard({ name, calories, protein, quantity, onDecrease, onIncrease, onRemove, onViewDetails, onDragStart, onDragEnd }: RecipeCardProps) {
+function RecipeCard({ name, calories, protein, quantity, dailyCalories, highlightCalories, onDecrease, onIncrease, onRemove, onViewDetails, onDragStart, onDragEnd }: RecipeCardProps) {
+
+  const cardCalories = calories * quantity;
+  const dailyShare =
+    dailyCalories > 0 ? (cardCalories / dailyCalories) * 100 : 0
+
   return (
     <article
-      className="recipe-card"
-      draggable
+      className={
+        highlightCalories
+          ? 'recipe-card recipe-card-attention'
+          : 'recipe-card'
+      } draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
     >
@@ -34,8 +44,20 @@ function RecipeCard({ name, calories, protein, quantity, onDecrease, onIncrease,
           +
         </button>
       </div>
-      <p>Calories: {(calories * quantity).toFixed(0)} kcal</p>
-      <p>Protein: {(protein * quantity).toFixed(1)} g</p>
+      <p>
+        Calories: {cardCalories.toFixed(0)} kcal
+        {' . '}
+        {dailyShare.toFixed(0)}% of daily calories
+
+      </p>
+      {highlightCalories && (
+        <p className="recipe-attention-label">
+          Larget calorie contribution
+        </p>
+      )}
+      <p>
+        Protein: {(protein * quantity).toFixed(1)} g
+      </p>
       <button onClick={onRemove}>Remove</button>
       <button onClick={onViewDetails}>View recipe</button>
     </article>

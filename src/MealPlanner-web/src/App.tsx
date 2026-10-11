@@ -350,6 +350,18 @@ function App() {
     { calories: 0, protein: 0 },
   );
 
+  const overCalorieBudget = dailyTotals.calories > dailyTargets.calories
+
+  const largetCardCalories = displayedMeals.reduce(
+    (largest, meal) =>
+      meal.recipes.reduce(
+        (mealLargest, recipe) =>
+          Math.max(mealLargest, recipe.calories * recipe.quantity),
+        largest,
+      ),
+    0,
+  )
+
   // ### Persistence of top bar values and settings ### 
 
   useEffect(() => {
@@ -442,6 +454,7 @@ function App() {
           label="Calories"
           unit="kcal"
           target={dailyTargets.calories}
+          mode="budget"
           segments={mealNutrition.map((meal) => ({
             ...meal,
             value: meal.calories,
@@ -452,6 +465,7 @@ function App() {
           label="Protein"
           unit="g"
           target={dailyTargets.protein}
+          mode="goal"
           segments={mealNutrition.map((meal) => ({
             ...meal,
             value: meal.protein,
@@ -475,6 +489,12 @@ function App() {
                 setDraggedRecipe(null)
               }
             }}
+            calories={
+              mealNutrition.find((nutrition) => nutrition.id === meal.id)?.calories ?? 0
+            }
+            protein={
+              mealNutrition.find((nutrition) => nutrition.id === meal.id)?.protein ?? 0
+            }
           >
 
 
@@ -486,6 +506,11 @@ function App() {
                 quantity={recipe.quantity}
                 calories={recipe.calories}
                 protein={recipe.protein}
+                highlightCalories={
+                  overCalorieBudget &&
+                  recipe.calories * recipe.quantity === largetCardCalories
+                }
+                dailyCalories={dailyTotals.calories}
                 onRemove={() => removeRecipe(meal.id, recipe.id)}
                 onIncrease={() => changeQuantity(meal.id, recipe.id, 1)}
                 onDecrease={() => changeQuantity(meal.id, recipe.id, -1)}

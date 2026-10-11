@@ -8,7 +8,9 @@ type NutritionBarProps = {
     title: string,
     color: string,
     value: number
-  }[]
+  }[],
+  mode: 'budget' | 'goal'
+
 }
 
 function NutritionBar({
@@ -16,16 +18,23 @@ function NutritionBar({
   unit,
   target,
   segments,
+  mode,
 }: NutritionBarProps) {
   const total = segments.reduce((sum, segment) => sum + segment.value, 0)
   const scale = Math.max(target, total, 1)
-  const overTarget = total > target
+  const overBudget = mode === 'budget' && total > target
+  const goalReached = mode === 'goal' && total >= target
 
   return (
     <section className="nutrition-bar">
       <p>
-        <strong>{label}</strong> : {total.toFixed(1)} / {target} {unit} {overTarget && (
-          <span> - {(total - target).toFixed(1)} {unit} over target</span>
+        <strong>{label}</strong> : {total.toFixed(1)} / {target} {unit}
+        {overBudget && (
+          <span className="nutrition-over-budget"> - {(total - target).toFixed(1)} {unit} over budget</span>
+        )}
+
+        {goalReached && (
+          <span className="nutrition-goal-reached"> - Goal reached</span>
         )}
       </p>
       <div className="nutrition-track" aria-hidden="true">
@@ -42,7 +51,7 @@ function NutritionBar({
 
         <div
           className={
-            overTarget
+            overBudget
               ? 'nutrition-target nutrition-target-over'
               : 'nutrition-target'
           }
