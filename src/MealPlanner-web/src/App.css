@@ -191,7 +191,6 @@ dialog::backdrop {
 }
 
 
-
 .recipe-picker {
   position: relative;
 }
@@ -227,4 +226,19 @@ dialog::backdrop {
   width: 100%;
   padding: 8px;
   text-align: left;
+}
+
+/* Recipe creator */
+
+.ingredient-form {
+  display: grid;
+  gap: 12px;
+  max-width: 480px;
+  margin: 24px auto;
+  text-align: left;
+}
+
+.ingredient-form label {
+  display: grid;
+  gap: 4px;
 }

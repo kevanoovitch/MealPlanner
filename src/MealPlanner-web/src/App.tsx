@@ -2,24 +2,17 @@ import "./App.css";
 import RecipeCard from './components/RecipeCard.tsx'
 import MealColumn from './components/MealColumn.tsx'
 import RecipePicker from './components/RecipePicker.tsx'
+import IngredientForm from "./components/IngredientFrom.tsx";
 
-import { recipes as mockRecipes, ingredients } from "./data/mockData";
+import {
+  recipes as mockRecipes,
+  ingredients as initialIngredients,
+} from "./data/mockData";
+import type { Ingredient } from "./data/mockData";
 import { calculateRecipeNutrition } from "./utils/nutrition";
 
 import { useState, useEffect, useRef } from "react";
 import NutritionBar from "./components/NutritionBar.tsx";
-
-
-const recipes = mockRecipes.map((recipe) => {
-  const nutrition = calculateRecipeNutrition(recipe, ingredients);
-
-  return {
-    id: recipe.id,
-    name: recipe.name,
-    calories: nutrition.calories / recipe.servings,
-    protein: nutrition.protein / recipe.servings,
-  };
-});
 
 type PlannedRecipe = {
   recipeId: string
@@ -76,6 +69,23 @@ function isMealPlan(value: unknown): value is Meal[] {
 
 function App() {
 
+  const [ingredients, setIngredients] =
+    useState<Ingredient[]>(initialIngredients)
+
+  const recipes = mockRecipes.map((recipe) => {
+    const nutrition = calculateRecipeNutrition(recipe, ingredients);
+
+
+    return {
+      id: recipe.id,
+      name: recipe.name,
+      calories: nutrition.calories / recipe.servings,
+      protein: nutrition.protein / recipe.servings,
+    };
+  });
+
+
+
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null)
 
   const [draggedRecipe, setDraggedRecipe] = useState<{
@@ -86,6 +96,7 @@ function App() {
   const selectedRecipe = mockRecipes.find(
     (recipe) => recipe.id === selectedRecipeId,
   )
+  const [ingredientFormOpen, setIngredientFormOpen] = useState(false)
 
   const detailsRef = useRef<HTMLDialogElement>(null)
 
@@ -383,6 +394,15 @@ function App() {
   }, [meals])
 
 
+  function addIngredient(ingredient: Omit<Ingredient, 'id'>) {
+    setIngredients((currentIngredient) => [
+      ...currentIngredient,
+      { ...ingredient, id: crypto.randomUUID() },
+    ])
+  }
+
+
+  // ### App() return ### 
 
   return (
     <main>
@@ -573,6 +593,35 @@ function App() {
         )
       }
 
+
+      <section>
+        <button
+          type="button"
+          onClick={() => setIngredientFormOpen((open) => !open)}
+          aria-expanded={ingredientFormOpen}
+        >
+          {ingredientFormOpen ? 'Cancel' : 'New ingredient'}
+        </button>
+
+        {ingredientFormOpen && (
+          <IngredientForm
+            onAdd={(ingredient) => {
+              addIngredient(ingredient)
+              setIngredientFormOpen(false)
+            }}
+          />
+        )}
+
+        <h2>Ingredient catalog</h2>
+        <ul>
+          {ingredients.map((ingredient) => (
+            <li key={ingredient.id}>
+              {ingredient.name} - {ingredient.kcalPer100g} kcal,
+              {' '}{ingredient.proteinPer100g} g protein per 100 g
+            </li>
+          ))}
+        </ul>
+      </section>
 
     </main >
   );
