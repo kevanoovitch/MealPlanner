@@ -3,12 +3,13 @@ import RecipeCard from './components/RecipeCard.tsx'
 import MealColumn from './components/MealColumn.tsx'
 import RecipePicker from './components/RecipePicker.tsx'
 import IngredientForm from "./components/IngredientFrom.tsx";
+import RecipeFrom from "./components/RecipeForm.tsx";
 
 import {
   recipes as mockRecipes,
   ingredients as initialIngredients,
 } from "./data/mockData";
-import type { Ingredient } from "./data/mockData";
+import type { Ingredient, Recipe } from "./data/mockData";
 import { calculateRecipeNutrition } from "./utils/nutrition";
 
 import { useState, useEffect, useRef } from "react";
@@ -67,12 +68,151 @@ function isMealPlan(value: unknown): value is Meal[] {
   )
 }
 
+function isIngredient(value: unknown): value is Ingredient {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    !('id' in value) ||
+    typeof value.id !== 'string' ||
+    !value.id.trim() ||
+    !('name' in value) ||
+    typeof value.name !== 'string' ||
+    !value.name.trim()
+  ) {
+    return false
+  }
+
+  const fields = [
+    'kcalPer100g',
+    'proteinPer100g',
+    'sugarPer100g',
+    'fatPer100g',
+  ] as const
+
+  return fields.every((field) => {
+
+    if (!(field in value)) {
+      return false
+    }
+
+    const amount = (value as Record<string, unknown>)[field]
+
+    return (
+      typeof amount === 'number' &&
+      Number.isFinite(amount) &&
+      amount >= 0 &&
+      (field === 'kcalPer100g' || amount <= 100)
+    )
+  })
+}
+
+function isRecipe(value: unknown): value is Recipe {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    !('id' in value) ||
+    typeof value.id !== 'string' ||
+    !value.id.trim() ||
+    !('name' in value) ||
+    typeof value.name !== 'string' ||
+    !value.name.trim() ||
+    !('instructions' in value) ||
+    typeof value.instructions !== 'string' ||
+    !value.instructions.trim() ||
+    !('servings' in value) ||
+    typeof value.servings !== 'number' ||
+    !Number.isSafeInteger(value.servings) ||
+    value.servings < 1 ||
+    !('ingredients' in value) ||
+    !Array.isArray(value.ingredients) ||
+    value.ingredients.length === 0
+  ) {
+    return false
+  }
+
+  if ('imageUrl' in value && typeof value.imageUrl !== 'string') {
+    return false
+  }
+
+  return value.ingredients.every(
+    (item: unknown) =>
+      item != null &&
+      typeof item === 'object' &&
+      'ingredientId' in item &&
+      typeof item.ingredientId === 'string' &&
+      'amountGrams' in item &&
+      typeof item.amountGrams === 'number' &&
+      Number.isFinite(item.amountGrams) &&
+      item.amountGrams > 0,
+  )
+}
+
+
 function App() {
 
   const [ingredients, setIngredients] =
-    useState<Ingredient[]>(initialIngredients)
+    useState<Ingredient[]>(() => {
+      try {
+        const stored = localStorage.getItem('mealplanner.ingredients')
 
-  const recipes = mockRecipes.map((recipe) => {
+        if (stored !== null) {
+          const parsed: unknown = JSON.parse(stored)
+
+          if (Array.isArray(parsed) && parsed.every(isIngredient)) {
+            const ids = new Set(parsed.map((ingredient) => ingredient.id))
+
+            const hasUniqueIds = ids.size === parsed.length
+            const hasRequiredIngredients = mockRecipes.every((recipe) =>
+              recipe.ingredients.every((item) => ids.has(item.ingredientId)),
+            )
+
+            if (hasUniqueIds && hasRequiredIngredients) {
+              return parsed
+            }
+          }
+
+        }
+      } catch {
+        console.warn('Could not load saved ingredients.')
+      }
+      return initialIngredients
+    })
+
+  const [recipeCatalog, setRecipeCatalog] = useState<Recipe[]>(() => {
+    try {
+      const stored = localStorage.getItem('mealplanner.recipes')
+
+      if (stored !== null) {
+        const parsed: unknown = JSON.parse(stored)
+
+        if (Array.isArray(parsed) && parsed.every(isRecipe)) {
+          const recipeIds = new Set(parsed.map((recipe) => recipe.id))
+          const ingredientIds = new Set(
+            ingredients.map((ingredient) => ingredient.id),
+          )
+          const validReferences = parsed.every((recipe) =>
+            recipe.ingredients.every((item) =>
+              ingredientIds.has(item.ingredientId),
+            ),
+          )
+
+          if (recipeIds.size === parsed.length && validReferences) {
+            return parsed
+          }
+        }
+        console.warn('Saved recipes are invalid; using starter recipes.')
+      }
+    } catch {
+      console.warn('Could not load saved recipes.')
+    }
+    return mockRecipes
+  })
+
+
+  const [recipeFormOpen, setRecipeFromOpen] = useState(false)
+
+
+  const recipes = recipeCatalog.map((recipe) => {
     const nutrition = calculateRecipeNutrition(recipe, ingredients);
 
 
@@ -93,7 +233,7 @@ function App() {
     recipeId: string
   } | null>(null)
 
-  const selectedRecipe = mockRecipes.find(
+  const selectedRecipe = recipeCatalog.find(
     (recipe) => recipe.id === selectedRecipeId,
   )
   const [ingredientFormOpen, setIngredientFormOpen] = useState(false)
@@ -166,6 +306,27 @@ function App() {
     }),
   }))
 
+
+  useEffect(() => {
+
+    try {
+      localStorage.setItem('mealplanner.recipes',
+        JSON.stringify(recipeCatalog),
+      )
+    } catch {
+      console.warn('Could not save recipes in this browser.')
+    }
+  }, [recipeCatalog])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mealplanner.ingredients',
+        JSON.stringify(ingredients),
+      )
+    } catch {
+      console.warn('Could not save ingredients in this browser.')
+    }
+  }, [ingredients])
 
   useEffect(() => {
     const dialog = detailsRef.current
@@ -363,7 +524,7 @@ function App() {
 
   const overCalorieBudget = dailyTotals.calories > dailyTargets.calories
 
-  const largetCardCalories = displayedMeals.reduce(
+  const largestCardCalories = displayedMeals.reduce(
     (largest, meal) =>
       meal.recipes.reduce(
         (mealLargest, recipe) =>
@@ -394,13 +555,25 @@ function App() {
   }, [meals])
 
 
-  function addIngredient(ingredient: Omit<Ingredient, 'id'>) {
-    setIngredients((currentIngredient) => [
-      ...currentIngredient,
-      { ...ingredient, id: crypto.randomUUID() },
-    ])
+  function addIngredient(ingredient: Omit<Ingredient, 'id'>): Ingredient {
+    const newIngredient = {
+      ...ingredient,
+      id: crypto.randomUUID(),
+    }
+
+    setIngredients((current) => [...current, newIngredient])
+
+    return newIngredient
   }
 
+  function addNewRecipe(recipe: Omit<Recipe, 'id'>) {
+    setRecipeCatalog((current) => [
+      ...current,
+      { ...recipe, id: crypto.randomUUID() },
+    ])
+
+    setRecipeFromOpen(false)
+  }
 
   // ### App() return ### 
 
@@ -528,7 +701,7 @@ function App() {
                 protein={recipe.protein}
                 highlightCalories={
                   overCalorieBudget &&
-                  recipe.calories * recipe.quantity === largetCardCalories
+                  recipe.calories * recipe.quantity === largestCardCalories
                 }
                 dailyCalories={dailyTotals.calories}
                 onRemove={() => removeRecipe(meal.id, recipe.id)}
@@ -553,6 +726,19 @@ function App() {
           </MealColumn>
         ))}
       </div>
+
+      {recipeFormOpen ? (
+        <RecipeFrom
+          ingredients={ingredients}
+          onCancel={() => setRecipeFromOpen(false)}
+          onSave={addNewRecipe}
+          onCreateIngredient={addIngredient}
+        />
+      ) : (
+        <button type="button" onClick={() => setRecipeFromOpen(true)}>
+          New recipe
+        </button>
+      )}
 
 
       {
