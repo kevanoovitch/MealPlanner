@@ -43,6 +43,7 @@ const initialTargets = {
   protein: 180,
 };
 
+
 function isMealPlan(value: unknown): value is Meal[] {
   return (
     Array.isArray(value) &&
@@ -149,6 +150,12 @@ function isRecipe(value: unknown): value is Recipe {
 
 
 function App() {
+
+
+  const [activeView, setActiveView] = useState<
+    'planner' | 'recipes' | 'ingredients'
+  >('planner')
+
 
   const [ingredients, setIngredients] =
     useState<Ingredient[]>(() => {
@@ -581,163 +588,209 @@ function App() {
     <main>
       <h1>Meal Planner</h1>
 
-      <button
-        onClick={() => setSettingsOpen((open) => !open)}
-        aria-expanded={settingsOpen}
-      >
-        Settings
-      </button>
+      <nav aria-label="Main navigation">
+        <button type="button" onClick={() => setActiveView('planner')}>
+          Planner
+        </button>
+        <button type="button" onClick={() => setActiveView('recipes')}>
+          Recipes
+        </button>
+        <button type="button" onClick={() => setActiveView('ingredients')}>
+          ingredients
+        </button>
+      </nav>
 
-      {settingsOpen && (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
 
-            const formData = new FormData(event.currentTarget)
-            const calories = Number(formData.get('calories'))
-            const protein = Number(formData.get('protein'))
+      {activeView === 'planner' && (
+        <>
+          {/* Settings */}
 
-            if (
-              !Number.isFinite(calories) ||
-              !Number.isFinite(protein) ||
-              calories <= 0 ||
-              protein <= 0
-            ) {
-              return
-            }
+          <button
+            onClick={() => setSettingsOpen((open) => !open)}
+            aria-expanded={settingsOpen}
+          >
+            Settings
+          </button>
 
-            setDailyTargets({ calories, protein })
-            setSettingsOpen(false)
-          }}
-        >
+          {settingsOpen && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
 
-          <label>
+                const formData = new FormData(event.currentTarget)
+                const calories = Number(formData.get('calories'))
+                const protein = Number(formData.get('protein'))
 
-            Daily calories (kcal)
-            <input
-              name="calories"
-              type="number"
-              min="1"
-              step="1"
-              required
-              defaultValue={dailyTargets.calories}
+                if (
+                  !Number.isFinite(calories) ||
+                  !Number.isFinite(protein) ||
+                  calories <= 0 ||
+                  protein <= 0
+                ) {
+                  return
+                }
+
+                setDailyTargets({ calories, protein })
+                setSettingsOpen(false)
+              }}
+            >
+
+              <label>
+
+                Daily calories (kcal)
+                <input
+                  name="calories"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  defaultValue={dailyTargets.calories}
+                />
+              </label>
+
+              <label>
+
+                Daily Protein (g)
+                <input
+                  name="protein"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  defaultValue={dailyTargets.protein}
+                />
+              </label>
+              <button type="submit">Save targets</button>
+
+            </form>
+          )}
+
+          {/* Nutrition summary Bar */}
+
+          <div className="nutrition-summary">
+
+            <NutritionBar
+              label="Calories"
+              unit="kcal"
+              target={dailyTargets.calories}
+              mode="budget"
+              segments={mealNutrition.map((meal) => ({
+                ...meal,
+                value: meal.calories,
+              }))}
             />
-          </label>
 
-          <label>
-
-            Daily Protein (g)
-            <input
-              name="protein"
-              type="number"
-              min="1"
-              step="1"
-              required
-              defaultValue={dailyTargets.protein}
+            <NutritionBar
+              label="Protein"
+              unit="g"
+              target={dailyTargets.protein}
+              mode="goal"
+              segments={mealNutrition.map((meal) => ({
+                ...meal,
+                value: meal.protein,
+              }))}
             />
-          </label>
-          <button type="submit">Save targets</button>
+          </div>
 
-        </form>
+
+          <div className="meal-grid">
+            {displayedMeals.map((meal) => (
+              <MealColumn
+                key={meal.id}
+                title={meal.title}
+                color={mealColors[meal.id] ?? '#64748b'}
+                canDrop={draggedRecipe !== null && draggedRecipe.mealId !== meal.id}
+                onDrop={(event) => {
+                  event.preventDefault()
+
+                  if (draggedRecipe) {
+                    moveRecipe(draggedRecipe.mealId, meal.id, draggedRecipe.recipeId)
+                    setDraggedRecipe(null)
+                  }
+                }}
+                calories={
+                  mealNutrition.find((nutrition) => nutrition.id === meal.id)?.calories ?? 0
+                }
+                protein={
+                  mealNutrition.find((nutrition) => nutrition.id === meal.id)?.protein ?? 0
+                }
+              >
+
+
+
+                {meal.recipes.map((recipe) => (
+                  <RecipeCard
+                    key={recipe.id}
+                    name={recipe.name}
+                    quantity={recipe.quantity}
+                    calories={recipe.calories}
+                    protein={recipe.protein}
+                    highlightCalories={
+                      overCalorieBudget &&
+                      recipe.calories * recipe.quantity === largestCardCalories
+                    }
+                    dailyCalories={dailyTotals.calories}
+                    onRemove={() => removeRecipe(meal.id, recipe.id)}
+                    onIncrease={() => changeQuantity(meal.id, recipe.id, 1)}
+                    onDecrease={() => changeQuantity(meal.id, recipe.id, -1)}
+                    onViewDetails={() => setSelectedRecipeId(recipe.id)}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = 'move'
+                      event.dataTransfer.setData('text/plain', recipe.id)
+                      setDraggedRecipe({ mealId: meal.id, recipeId: recipe.id })
+                    }}
+                    onDragEnd={() => setDraggedRecipe(null)}
+                  />
+                ))}
+
+                <RecipePicker
+                  recipes={recipes}
+                  selectedRecipeIds={meal.recipes.map((recipe) => recipe.id)}
+                  onAdd={(recipeId) => addRecipe(meal.id, recipeId)}
+                />
+
+              </MealColumn>
+            ))}
+          </div>
+        </>
       )}
 
-      <div className="nutrition-summary">
+      {activeView === 'recipes' && (
+        <section>
+          <h2>Recipe catalog</h2>
+          {recipeFormOpen ? (
+            <RecipeFrom
+              ingredients={ingredients}
+              onCancel={() => setRecipeFromOpen(false)}
+              onSave={addNewRecipe}
+              onCreateIngredient={addIngredient}
+            />
+          ) : (
+            <button type="button" onClick={() => setRecipeFromOpen(true)}>
+              New recipe
+            </button>
+          )}
 
-        <NutritionBar
-          label="Calories"
-          unit="kcal"
-          target={dailyTargets.calories}
-          mode="budget"
-          segments={mealNutrition.map((meal) => ({
-            ...meal,
-            value: meal.calories,
-          }))}
-        />
-
-        <NutritionBar
-          label="Protein"
-          unit="g"
-          target={dailyTargets.protein}
-          mode="goal"
-          segments={mealNutrition.map((meal) => ({
-            ...meal,
-            value: meal.protein,
-          }))}
-        />
-      </div>
-
-
-      <div className="meal-grid">
-        {displayedMeals.map((meal) => (
-          <MealColumn
-            key={meal.id}
-            title={meal.title}
-            color={mealColors[meal.id] ?? '#64748b'}
-            canDrop={draggedRecipe !== null && draggedRecipe.mealId !== meal.id}
-            onDrop={(event) => {
-              event.preventDefault()
-
-              if (draggedRecipe) {
-                moveRecipe(draggedRecipe.mealId, meal.id, draggedRecipe.recipeId)
-                setDraggedRecipe(null)
-              }
-            }}
-            calories={
-              mealNutrition.find((nutrition) => nutrition.id === meal.id)?.calories ?? 0
-            }
-            protein={
-              mealNutrition.find((nutrition) => nutrition.id === meal.id)?.protein ?? 0
-            }
-          >
-
-
-
-            {meal.recipes.map((recipe) => (
-              <RecipeCard
-                key={recipe.id}
-                name={recipe.name}
-                quantity={recipe.quantity}
-                calories={recipe.calories}
-                protein={recipe.protein}
-                highlightCalories={
-                  overCalorieBudget &&
-                  recipe.calories * recipe.quantity === largestCardCalories
-                }
-                dailyCalories={dailyTotals.calories}
-                onRemove={() => removeRecipe(meal.id, recipe.id)}
-                onIncrease={() => changeQuantity(meal.id, recipe.id, 1)}
-                onDecrease={() => changeQuantity(meal.id, recipe.id, -1)}
-                onViewDetails={() => setSelectedRecipeId(recipe.id)}
-                onDragStart={(event) => {
-                  event.dataTransfer.effectAllowed = 'move'
-                  event.dataTransfer.setData('text/plain', recipe.id)
-                  setDraggedRecipe({ mealId: meal.id, recipeId: recipe.id })
-                }}
-                onDragEnd={() => setDraggedRecipe(null)}
-              />
+          <div className="recipe-catalog">
+            {recipes.map((recipe) => (
+              <article key={recipe.id}>
+                <h3>{recipe.name}</h3>
+                <p>
+                  {recipe.calories.toFixed(0)} kcal ·{' '}
+                  {recipe.protein.toFixed(1)} g protein per serving
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRecipeId(recipe.id)}
+                >
+                  Details
+                </button>
+              </article>
             ))}
 
-            <RecipePicker
-              recipes={recipes}
-              selectedRecipeIds={meal.recipes.map((recipe) => recipe.id)}
-              onAdd={(recipeId) => addRecipe(meal.id, recipeId)}
-            />
+          </div>
 
-          </MealColumn>
-        ))}
-      </div>
-
-      {recipeFormOpen ? (
-        <RecipeFrom
-          ingredients={ingredients}
-          onCancel={() => setRecipeFromOpen(false)}
-          onSave={addNewRecipe}
-          onCreateIngredient={addIngredient}
-        />
-      ) : (
-        <button type="button" onClick={() => setRecipeFromOpen(true)}>
-          New recipe
-        </button>
+        </section>
       )}
 
 
@@ -780,34 +833,37 @@ function App() {
       }
 
 
-      <section>
-        <button
-          type="button"
-          onClick={() => setIngredientFormOpen((open) => !open)}
-          aria-expanded={ingredientFormOpen}
-        >
-          {ingredientFormOpen ? 'Cancel' : 'New ingredient'}
-        </button>
+      {activeView === 'ingredients' && (
+        <section>
+          <button
+            type="button"
+            onClick={() => setIngredientFormOpen((open) => !open)}
+            aria-expanded={ingredientFormOpen}
+          >
+            {ingredientFormOpen ? 'Cancel' : 'New ingredient'}
+          </button>
 
-        {ingredientFormOpen && (
-          <IngredientForm
-            onAdd={(ingredient) => {
-              addIngredient(ingredient)
-              setIngredientFormOpen(false)
-            }}
-          />
-        )}
+          {ingredientFormOpen && (
+            <IngredientForm
+              onAdd={(ingredient) => {
+                addIngredient(ingredient)
+                setIngredientFormOpen(false)
+              }}
+            />
+          )}
 
-        <h2>Ingredient catalog</h2>
-        <ul>
-          {ingredients.map((ingredient) => (
-            <li key={ingredient.id}>
-              {ingredient.name} - {ingredient.kcalPer100g} kcal,
-              {' '}{ingredient.proteinPer100g} g protein per 100 g
-            </li>
-          ))}
-        </ul>
-      </section>
+          <h2>Ingredient catalog</h2>
+          <ul>
+            {ingredients.map((ingredient) => (
+              <li key={ingredient.id}>
+                {ingredient.name} - {ingredient.kcalPer100g} kcal,
+                {' '}{ingredient.proteinPer100g} g protein per 100 g
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
 
     </main >
   );

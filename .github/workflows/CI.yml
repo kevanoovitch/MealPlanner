@@ -10,6 +10,20 @@ permissions:
   contents: read
 
 jobs:
+  no-tutoring-notes:
+    name: No tutoring notes on main
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Reject the development-only tutoring handoff
+        shell: bash
+        run: |
+          if git ls-files --error-unmatch -- TUTORING.md >/dev/null 2>&1; then
+            echo "::error file=TUTORING.md::Remove TUTORING.md from the merge candidate; keep it on a development branch."
+            exit 1
+          fi
+
   lint:
     runs-on: ubuntu-24.04
     steps:
