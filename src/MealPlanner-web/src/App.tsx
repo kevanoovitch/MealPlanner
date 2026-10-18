@@ -148,6 +148,66 @@ function isRecipe(value: unknown): value is Recipe {
   )
 }
 
+type ExportedMealPlan = {
+  version: 1
+  dailyTargets: {
+    calories: number
+    protein: number
+  }
+  meals: Meal[]
+}
+
+function isExportedMealPlan(value: unknown): value is ExportedMealPlan {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    !('version' in value) ||
+    value.version !== 1 ||
+    !('dailyTargets' in value) ||
+    !('meals' in value)
+  ) {
+    return false
+  }
+
+  const targets = value.dailyTargets
+
+  if (
+    targets === null ||
+    typeof targets !== 'object' ||
+    !('calories' in targets) ||
+    typeof targets.calories !== 'number' ||
+    !Number.isFinite(targets.calories) ||
+    targets.calories <= 0 ||
+    !('protein' in targets) ||
+    typeof targets.protein !== 'number' ||
+    !Number.isFinite(targets.protein) ||
+    targets.protein <= 0
+  ) {
+    return false
+  }
+
+  if (!isMealPlan(value.meals)) {
+    return false
+  }
+
+  const MealsIds = new Set(value.meals.map((meal) => meal.id))
+
+  return (
+    value.meals.length === initialMeals.length &&
+    MealsIds.size === initialMeals.length &&
+    initialMeals.every((meal) => MealsIds.has(meal.id)) &&
+    value.meals.every((meal) => {
+      const recipeIds = meal.recipes.map((recipe) => recipe.recipeId)
+
+      return (
+        meal.title.trim().length > 0 &&
+        recipeIds.every((recipeId) => recipeId.trim().length > 0) &&
+        new Set(recipeIds).size === recipeIds.length
+      )
+    })
+  )
+}
+
 
 function App() {
 
@@ -159,6 +219,8 @@ function App() {
   const [recipeSearch, setRecipeSearch] = useState('')
 
   const [ingredientSearch, setIngredientSearch] = useState('')
+
+  const [importMessage, setImportMessage] = useState('')
 
   const [ingredients, setIngredients] =
     useState<Ingredient[]>(() => {
@@ -520,6 +582,62 @@ function App() {
     link.remove()
   }
 
+  // ### Import meal plan as JSON ### 
+
+  async function importMealPlan(file: File) {
+    setImportMessage('')
+
+    try {
+      const text = await file.text()
+      const parsed: unknown = JSON.parse(text)
+
+      if (!isExportedMealPlan(parsed)) {
+        setImportMessage('This file is not a supported meal plan.')
+        return
+      }
+
+      const availableRecipeIds = new Set(
+        recipeCatalog.map((recipe) => recipe.id),
+      )
+
+      const missingRecipeIds = [
+        ...new Set(
+          parsed.meals.flatMap((meal) =>
+            meal.recipes
+              .filter((recipe) => !availableRecipeIds.has(recipe.recipeId))
+              .map((recipe) => recipe.recipeId),
+          ),
+        ),
+      ]
+
+      if (missingRecipeIds.length > 0) {
+        setImportMessage(
+          `Cannot import: these recipes are msising from your catalog: ${missingRecipeIds.join('. ')
+          }. Your current plan has not changed. `,
+        )
+        return
+      }
+      const confirmed = window.confirm(`Recplace your current meals and saved daily targets with this plan?`,)
+
+      if (!confirmed) {
+        setImportMessage(`Import cancelled. Your current plan has not changed.`)
+        return
+      }
+
+      setMeals(parsed.meals)
+      setDailyTargets(parsed.dailyTargets)
+      setSettingsOpen(false)
+      setImportMessage('Meal plan imported.')
+    } catch {
+      setImportMessage(
+        `Could not read this meal plan. Chose valid JSON export. Your current plan has not changed`
+      )
+    }
+  }
+
+
+
+
   // ### Totals overhead bar ### 
 
   const mealColors: Record<string, string> = {
@@ -661,62 +779,84 @@ function App() {
           </button>
 
           {settingsOpen && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault()
+            <>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault()
 
-                const formData = new FormData(event.currentTarget)
-                const calories = Number(formData.get('calories'))
-                const protein = Number(formData.get('protein'))
+                  const formData = new FormData(event.currentTarget)
+                  const calories = Number(formData.get('calories'))
+                  const protein = Number(formData.get('protein'))
 
-                if (
-                  !Number.isFinite(calories) ||
-                  !Number.isFinite(protein) ||
-                  calories <= 0 ||
-                  protein <= 0
-                ) {
-                  return
-                }
+                  if (
+                    !Number.isFinite(calories) ||
+                    !Number.isFinite(protein) ||
+                    calories <= 0 ||
+                    protein <= 0
+                  ) {
+                    return
+                  }
 
-                setDailyTargets({ calories, protein })
-                setSettingsOpen(false)
-              }}
-            >
+                  setDailyTargets({ calories, protein })
+                  setSettingsOpen(false)
+                }}
+              >
+
+                <label>
+
+                  Daily calories (kcal)
+                  <input
+                    name="calories"
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    defaultValue={dailyTargets.calories}
+                  />
+                </label>
+
+                <label>
+
+                  Daily Protein (g)
+                  <input
+                    name="protein"
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    defaultValue={dailyTargets.protein}
+                  />
+                </label>
+                <button type="submit">Save targets</button>
+
+                <button type="button" onClick={exportMealPlan}>
+                  Export plan
+                </button>
+
+
+              </form>
+
+              {/* Import plan fragment */}
 
               <label>
-
-                Daily calories (kcal)
+                Import plan
                 <input
-                  name="calories"
-                  type="number"
-                  min="1"
-                  step="1"
-                  required
-                  defaultValue={dailyTargets.calories}
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0]
+                    event.currentTarget.value = ''
+
+                    if (file) {
+                      void importMealPlan(file)
+                    }
+                  }}
                 />
               </label>
-
-              <label>
-
-                Daily Protein (g)
-                <input
-                  name="protein"
-                  type="number"
-                  min="1"
-                  step="1"
-                  required
-                  defaultValue={dailyTargets.protein}
-                />
-              </label>
-              <button type="submit">Save targets</button>
-
-              <button type="button" onClick={exportMealPlan}>
-                Export plan
-              </button>
-
-
-            </form>
+            </>
           )}
+
+          {importMessage && <p role="status">{importMessage}</p>}
 
           {/* Nutrition summary Bar */}
 
