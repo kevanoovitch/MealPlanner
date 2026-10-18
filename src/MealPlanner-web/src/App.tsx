@@ -283,6 +283,27 @@ function App() {
 
   const [recipeFormOpen, setRecipeFromOpen] = useState(false)
 
+  const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null)
+
+  const editingRecipe = recipeCatalog.find(
+    (recipe) => recipe.id === editingRecipeId,
+  )
+
+  function saveRecipe(draft: Omit<Recipe, 'id'>) {
+    setRecipeCatalog((current) => {
+      if (editingRecipeId !== null) {
+        return current.map((recipe) =>
+          recipe.id === editingRecipeId
+            ? { ...recipe, ...draft }
+            : recipe,
+        )
+      }
+      return [...current, { ...draft, id: crypto.randomUUID() }]
+    })
+
+    setRecipeFromOpen(false)
+    setEditingRecipeId(null)
+  }
 
   const recipes = recipeCatalog.map((recipe) => {
     const nutrition = calculateRecipeNutrition(recipe, ingredients);
@@ -715,15 +736,6 @@ function App() {
     return newIngredient
   }
 
-  function addNewRecipe(recipe: Omit<Recipe, 'id'>) {
-    setRecipeCatalog((current) => [
-      ...current,
-      { ...recipe, id: crypto.randomUUID() },
-    ])
-
-    setRecipeFromOpen(false)
-  }
-
 
   const filteredRecipes = recipes.filter((recipie) =>
     recipie.name.toLowerCase().includes(recipeSearch.trim().toLowerCase()),
@@ -966,13 +978,21 @@ function App() {
           </label>
           {recipeFormOpen ? (
             <RecipeFrom
+              key={editingRecipeId ?? 'new'}
+              initialRecipe={editingRecipe}
               ingredients={ingredients}
-              onCancel={() => setRecipeFromOpen(false)}
-              onSave={addNewRecipe}
+              onCancel={() => {
+                setRecipeFromOpen(false)
+                setEditingRecipeId(null)
+              }}
+              onSave={saveRecipe}
               onCreateIngredient={addIngredient}
             />
           ) : (
-            <button type="button" onClick={() => setRecipeFromOpen(true)}>
+            <button type="button" onClick={() => {
+              setEditingRecipeId(null)
+              setRecipeFromOpen(true)
+            }}>
               New recipe
             </button>
           )}
@@ -991,6 +1011,18 @@ function App() {
                 >
                   Details
                 </button>
+
+                <button
+                  type="button"
+                  disabled={recipeFormOpen}
+                  onClick={() => {
+                    setEditingRecipeId(recipe.id)
+                    setRecipeFromOpen(true)
+                  }}
+                >
+                  Edit
+                </button>
+
               </article>
             ))}
 

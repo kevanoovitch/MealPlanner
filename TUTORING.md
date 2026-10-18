@@ -1,6 +1,6 @@
 # MealPlanner tutoring handoff
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 Working branch: `react_foundation`
 
 ## How to use this file
@@ -51,8 +51,9 @@ Images and convenient units such as slices can wait.
 
 - Frontend: React, TypeScript, Vite in `src/MealPlanner-web`.
 - Backend foundation: ASP.NET in `src/MealPlanner.Api`.
-- Current milestone: finish frontend 1.0 on `react_foundation`, review and merge
-  it, then start the real API and SQLite persistence in later work.
+- Current milestone: frontend 1.0 features are complete on `react_foundation`.
+  Review the diff and CI, prepare a merge candidate, and merge before starting
+  the real API and SQLite persistence in later work.
 - Current persistence is browser localStorage. It does not travel with Git;
   ingredients, recipes, and meal choices may differ between machines.
 
@@ -67,24 +68,39 @@ Images and convenient units such as slices can wait.
 - Recipe creation with name, servings, instructions, ingredient selection and
   amounts, removal, and nutrition preview. Missing ingredients can be created
   during recipe creation.
+- Recipe catalog Edit reuses the creation form with a fresh draft. Saving
+  preserves the recipe ID and updates existing placements; cancelling discards
+  recipe edits. Ingredient grams are editable directly, and saving requires
+  every amount to be finite and greater than zero.
 - Planner, Recipes, and Ingredients navigation using `activeView` in `App`.
   Shared data stays in `App` while views are conditionally rendered.
-- Recipes now displays the catalog with per-serving nutrition and Details
-  buttons, plus New recipe. Ingredients still uses a plain bulleted list.
+- Searchable recipe cards with per-serving nutrition, Details, and New recipe.
+- Active navigation highlighting and a searchable ingredient nutrition table.
+- Settings includes JSON export/import of the current meals and daily targets.
+  Catalogs remain separate: importing checks version, targets, supported meal
+  columns, unique placements, and recipe references, then asks before replacing
+  the current plan. Existing localStorage effects persist imported state.
+- CI now includes a frontend job running `npm ci`, lint, and build. Its exact
+  check name is `frontend lint and build` (lowercase).
 
 ## Next lesson
 
-The user stopped after confirming the recipe catalog displays saved recipes.
-Catalog search was suggested but is NOT implemented in the inspected code.
+The user committed and pushed import work at `7f76103` (Add meal plan importing).
+Recipe editing and the README screenshot were added afterward and remain
+uncommitted at this handoff. Codex reran lint/build successfully on these edits.
 
-1. Add `recipeSearch` state inside `App` and derive `filteredRecipes` from
-   `recipes` using a trimmed, case-insensitive name search.
-2. Add a labeled search input to the Recipes view, render `filteredRecipes`,
-   and display a no-matches message. Verify matching, no matches, and clearing.
-3. Style the recipe catalog and indicate the active navigation view.
-4. Give Ingredients a searchable table or similarly usable catalog layout.
-5. Review remaining frontend 1.0 requirements together before expanding scope.
-   Run the frontend build/lint and exercise the main flows before merging.
+1. Finish the browser checks for recipe editing: save changed amounts, cancel
+   changes, create a fresh recipe, and refresh to verify persistence. Commit and
+   push the recipe edits, README/screenshot, and this refreshed handoff when the
+   user is ready; Codex has not committed or pushed anything.
+2. Review the frontend 1.0 diff before merging. Keep `react_foundation` and its
+   handoff intact; prepare a separate merge candidate without `TUTORING.md`.
+   Creating branches or commits still requires the user's instruction.
+3. Open a PR into `main`, check all CI results, and ensure the ruleset requires
+   `frontend lint and build` as well as the existing checks. Do not merge until
+   checks and the review pass.
+4. After merging, plan the first ASP.NET/SQLite lesson. Do not start backend
+   implementation as part of the frontend merge preparation.
 
 ## Observations and checks
 
@@ -95,10 +111,19 @@ Catalog search was suggested but is NOT implemented in the inspected code.
   but the user chose catalog improvements as the next priority.
 - `RecipeForm.tsx` exports `RecipeFrom`; `IngredientFrom.tsx` is also spelled
   that way in the repository. Use the actual names when guiding edits.
-- The user manually confirmed navigation, recipe saving, and catalog display.
-  No frontend build or lint was run during this session.
-- At handoff creation, `App.tsx`, `package.json`, and `package-lock.json` already
-  had user changes. Preserve them; their validation is still pending.
+- The user confirmed catalog search, responsive card styling, navigation, and
+  ingredient table checks. They also reported import testing worked after a
+  hard refresh revealed the new control; individual import cases were not
+  independently observed by Codex.
+- The user confirmed recipe editing works and reports ingredient-amount editing
+  is implemented. Detailed save/cancel/persistence browser checks for these edits
+  have not been independently observed by Codex.
+- Codex reran frontend lint and build successfully on 2026-10-18 after recipe
+  editing, and `git diff --check` passed. GitHub CI results and the final ruleset
+  configuration have not been inspected.
+- Pending files: this handoff, `App.tsx`, `RecipeForm.tsx`, `readme.md`, and
+  `docs/images/planner.png`. Codex updated notes and added the README image link;
+  the user wrote the application changes.
 
 ## Keeping this file out of main
 

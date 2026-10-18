@@ -8,12 +8,17 @@ type RecipeFromProps = {
   onCancel: () => void
   onSave: (recipe: Omit<Recipe, 'id'>) => void
   onCreateIngredient: (ingredient: Omit<Ingredient, 'id'>) => Ingredient
+  initialRecipe?: Recipe
 }
 
-function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient }: RecipeFromProps) {
-  const [name, setName] = useState('')
-  const [servings, setServings] = useState('1')
-  const [instructions, setInstructions] = useState('')
+function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient, initialRecipe, }: RecipeFromProps) {
+  const [name, setName] = useState(initialRecipe?.name ?? '')
+  const [servings, setServings] = useState(
+    String(initialRecipe?.servings ?? 1),
+  )
+  const [instructions, setInstructions] = useState(
+    initialRecipe?.instructions ?? '',
+  )
 
   const [creatingIngredient, setCreatingIngredient] = useState(false)
 
@@ -22,7 +27,9 @@ function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient }: Recip
   const [selectedIngredientId, setSelectedIngredientId] = useState('')
   const [amountGrams, setAmountGrams] = useState('')
   const [recipeIngredients, setRecipeIngredient] =
-    useState<RecipeIngredient[]>([])
+    useState<RecipeIngredient[]>(() =>
+      initialRecipe?.ingredients.map((item) => ({ ...item })) ?? [],
+    )
 
   const parsedAmount = Number(amountGrams)
   const canAddIngredient =
@@ -45,7 +52,9 @@ function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient }: Recip
     draft.name.length > 0 &&
     draft.instructions.length > 0 &&
     validServings &&
-    recipeIngredients.length > 0
+    recipeIngredients.length > 0 &&
+    recipeIngredients.every((item) => Number.isFinite(item.amountGrams) && item.amountGrams > 0,
+    )
 
   const nutrition = calculateRecipeNutrition(
     { ...draft, id: 'preview' },
@@ -68,7 +77,7 @@ function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient }: Recip
 
         }}
       >
-        <h2>New recipe</h2>
+        <h2>{initialRecipe ? 'Edit recipe' : 'New recipe'}</h2>
 
         <label>
           Recipe name
@@ -178,8 +187,29 @@ function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient }: Recip
               return (
                 <li key={item.ingredientId}>
 
-                  {ingredient?.name ?? 'Unknown ingredient'} - {item.amountGrams} g
-                  {' '}
+                  <label>
+                    {ingredient?.name ?? 'Unknown ingredient'} - {item.amountGrams} g
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      required
+                      value={item.amountGrams || ''}
+                      onChange={(event) => {
+                        const amount = Number(event.target.value)
+
+                        setRecipeIngredient((current) =>
+                          current.map((entry) =>
+                            entry.ingredientId === item.ingredientId
+                              ? { ...entry, amountGrams: amount }
+                              : entry,
+
+                          ),
+                        )
+                      }}
+                    />
+                  </label>
+
                   <button
                     type="button"
                     onClick={() =>
