@@ -275,3 +275,99 @@ dialog::backdrop {
   display: flex;
   gap: 8px;
 }
+
+/* recipe catalog */
+
+.recipe-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 16px;
+  margin-top: 24px;
+
+
+}
+
+.recipe-catalog>article {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: left;
+}
+
+.recipe-catalog h3,
+.recipe-catalog p {
+  margin: 0;
+}
+
+.recipe-catalog h3 {
+  overflow-wrap: anywhere;
+}
+
+.recipe-catalog>article>button {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+/* Nav bars */
+
+.main-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.main-nav button {
+  padding: 10px 16px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+}
+
+.main-nav button[aria-current='page'] {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  font-weight: 700;
+}
+
+/* Ingredient catalog */
+
+.ingredient-table-container {
+  overflow: auto;
+  margin-top: 24px;
+}
+
+.ingredient-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.ingredient-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.ingredient-table caption {
+  padding-bottom: 12px;
+  text-align: left;
+}
+
+.ingredient-table th,
+.ingredient-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ingredient-table thead {
+  background: var(--code-bg);
+}
+
+.ingredient-table td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

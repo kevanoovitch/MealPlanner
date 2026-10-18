@@ -156,6 +156,9 @@ function App() {
     'planner' | 'recipes' | 'ingredients'
   >('planner')
 
+  const [recipeSearch, setRecipeSearch] = useState('')
+
+  const [ingredientSearch, setIngredientSearch] = useState('')
 
   const [ingredients, setIngredients] =
     useState<Ingredient[]>(() => {
@@ -496,6 +499,27 @@ function App() {
     )
   }
 
+  // ### Export meal plan as JSON ### 
+
+  function exportMealPlan() {
+    const plan = {
+      version: 1,
+      dailyTargets,
+      meals,
+    }
+
+    const json = JSON.stringify(plan, null, 2)
+    const file = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(file)
+
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'meal-plan.json'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  }
+
   // ### Totals overhead bar ### 
 
   const mealColors: Record<string, string> = {
@@ -582,20 +606,44 @@ function App() {
     setRecipeFromOpen(false)
   }
 
+
+  const filteredRecipes = recipes.filter((recipie) =>
+    recipie.name.toLowerCase().includes(recipeSearch.trim().toLowerCase()),
+  )
+
+  const filteredIngredients = ingredients.filter((ingredient) =>
+
+    ingredient.name.toLocaleLowerCase().includes(
+      ingredientSearch.trim().toLowerCase(),
+    ),
+  )
+
+
   // ### App() return ### 
 
   return (
     <main>
       <h1>Meal Planner</h1>
 
-      <nav aria-label="Main navigation">
-        <button type="button" onClick={() => setActiveView('planner')}>
+      <nav aria-label="Main navigation" className="main-nav">
+        <button
+          type="button"
+
+          aria-current={activeView === 'planner' ? 'page' : undefined}
+          onClick={() => setActiveView('planner')}>
           Planner
         </button>
-        <button type="button" onClick={() => setActiveView('recipes')}>
+        <button
+          type="button"
+          aria-current={activeView === 'recipes' ? 'page' : undefined}
+          onClick={() => setActiveView('recipes')}>
+
           Recipes
         </button>
-        <button type="button" onClick={() => setActiveView('ingredients')}>
+        <button
+          type="button"
+          aria-current={activeView === 'ingredients' ? 'page' : undefined}
+          onClick={() => setActiveView('ingredients')}>
           ingredients
         </button>
       </nav>
@@ -661,6 +709,11 @@ function App() {
                 />
               </label>
               <button type="submit">Save targets</button>
+
+              <button type="button" onClick={exportMealPlan}>
+                Export plan
+              </button>
+
 
             </form>
           )}
@@ -752,12 +805,25 @@ function App() {
               </MealColumn>
             ))}
           </div>
+
+
+
+
         </>
       )}
 
       {activeView === 'recipes' && (
         <section>
           <h2>Recipe catalog</h2>
+          <label>
+            Search recipe
+            <input
+              type="search"
+              value={recipeSearch}
+              onChange={(event) => setRecipeSearch(event.target.value)}
+              placeholder="Search by name"
+            />
+          </label>
           {recipeFormOpen ? (
             <RecipeFrom
               ingredients={ingredients}
@@ -772,7 +838,7 @@ function App() {
           )}
 
           <div className="recipe-catalog">
-            {recipes.map((recipe) => (
+            {filteredRecipes.map((recipe) => (
               <article key={recipe.id}>
                 <h3>{recipe.name}</h3>
                 <p>
@@ -789,6 +855,7 @@ function App() {
             ))}
 
           </div>
+          {filteredRecipes.length === 0 && <p>No matching recipes.</p>}
 
         </section>
       )}
@@ -853,14 +920,39 @@ function App() {
           )}
 
           <h2>Ingredient catalog</h2>
-          <ul>
-            {ingredients.map((ingredient) => (
-              <li key={ingredient.id}>
-                {ingredient.name} - {ingredient.kcalPer100g} kcal,
-                {' '}{ingredient.proteinPer100g} g protein per 100 g
-              </li>
-            ))}
-          </ul>
+
+          <label>
+            Search Ingredients
+            <input
+              type="search"
+              value={ingredientSearch}
+              onChange={(event) => setIngredientSearch(event.target.value)}
+              placeholder="Search by product name"
+            />
+          </label>
+
+          <div className="ingredient-table-container">
+            <table className="ingredient-table">
+              <caption>Nutrition per 100 g</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Ingredient</th>
+                  <th scope="col">Calories (kcal)</th>
+                  <th scope="<col>">Proteing (g)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredIngredients.map((ingredient) => (
+                  <tr key={ingredient.id}>
+                    <th scope="row">{ingredient.name}</th>
+                    <td>{ingredient.kcalPer100g.toFixed(0)}</td>
+                    <td>{ingredient.proteinPer100g.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {filteredIngredients.length === 0 && <p>No matching ingredients.</p>}
         </section>
       )}
 

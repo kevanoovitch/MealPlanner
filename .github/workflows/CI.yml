@@ -68,3 +68,27 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
+
+  frontend-presubmit:
+    name: frontend lint and build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: src/MealPlanner-web
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: src/MealPlanner-web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: List Frontend
+        run: npm run lint
+
+      - name: Build Frotnend
+        run: npm run build
