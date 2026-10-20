@@ -1,6 +1,6 @@
 # MealPlanner tutoring handoff
 
-Last updated: 2026-10-19
+Last updated: 2026-10-21
 Working branch: `feat/sqlite-backend`
 
 ## How to use this file
@@ -64,8 +64,18 @@ Images and convenient units such as slices can wait.
 - Installed `Microsoft.EntityFrameworkCore.Sqlite` version `10.0.13`.
   `Data/MealPlannerDbContext.cs` inherits DbContext, takes typed options in its
   constructor, and exposes `DbSet<Ingredient> Ingredients`.
-- The context is not registered in Program.cs yet. There is no configured
-  SQLite connection, migration, ingredient endpoint, or React API integration.
+- Program.cs registers the context with AddDbContext / UseSqlite. A connection
+  string builder points to `mealplanner.db` under the API content root.
+- Installed EF Core Design and local `dotnet-ef`, both version `10.0.13`.
+  The tool manifest is at repository root: `dotnet-tools.json` (not `.config/`).
+- Generated and applied `InitialCreate`; migration files are in the API's
+  `Migrations` directory. The user reports database update succeeded.
+  `.gitignore` excludes `/src/MealPlanner.Api/mealplanner.db*`.
+- `GET /api/ingredients` reads SQLite using AsNoTracking, orders by Name, and
+  returns JSON. The user confirmed it works with the initially empty table.
+- `Contracts/CreateIngredientRequest.cs` defines required Name and required
+  decimal nutrition properties, with no ID. DTO compilation succeeded per user.
+  POST, input-value validation, and React API integration are not implemented.
 
 ## Current working frontend
 
@@ -95,23 +105,20 @@ Images and convenient units such as slices can wait.
 
 ## Next lesson
 
-Paused after installing EF Core's SQLite provider and writing the database
-context. The user reports `dotnet build` succeeded. Resume with connection setup,
-not by repeating the model or context exercise.
+Paused after creating CreateIngredientRequest; the user reports the build passed.
+Resume with the POST handler, not the DTO, connection setup, or initial migration.
 
-1. Configure a SQLite connection string and register MealPlannerDbContext with
-   `AddDbContext` / `UseSqlite` before `builder.Build()`. Explain dependency
-   injection and choose a predictable database-file location.
-2. Set up EF Core migration tooling and the Design package with compatible
-   versions. Create and apply an initial migration for Ingredients. Explain
-   schema migrations; do not substitute EnsureCreated for the migration flow.
-   Keep database files and SQLite sidecar files out of Git; commit migrations.
-3. Add ingredient list/create endpoints with input validation. Verify records
-   survive an API restart before involving React.
-4. Connect React's ingredient catalog to the API, including development-server
+1. Add `POST /api/ingredients` accepting CreateIngredientRequest and the injected
+   context. Reject null/blank names, negative kcal, and protein/sugar/fat outside
+   0–100. Trim Name, construct Ingredient so the backend generates its ID, and
+   persist with SaveChangesAsync. Explain the response status and body.
+2. Test a valid POST, read it back with GET, and restart the API to verify
+   persistence. Test missing fields and invalid values without adding records.
+   If returning a resource Location URL, implement a matching GET-by-ID route.
+3. Connect React's ingredient catalog to the API, including development-server
    cross-origin handling and error/loading states. Discuss existing localStorage
    data and recipe-ID compatibility before replacing browser persistence.
-5. Extend to recipes, recipe ingredients and quantities, then meal plans. Keep
+4. Extend to recipes, recipe ingredients and quantities, then meal plans. Keep
    each tutoring exercise small and verify it before introducing more layers.
 
 ## Observations and checks
@@ -134,10 +141,21 @@ not by repeating the model or context exercise.
 - On 2026-10-19 the user confirmed Hello World, model compilation, and the build
   after installing SQLite EF Core and creating the context. Codex inspected the
   files but did not independently rerun the backend build during this handoff.
-- Pending files: this handoff (copied onto the new branch and still untracked),
-  the modified API csproj, `Models/Ingredient.cs`, and
-  `Data/MealPlannerDbContext.cs`. The user will commit and push them; Codex has
-  not committed or pushed anything.
+- On 2026-10-21 the user confirmed Hello World after context registration,
+  successful migration setup/application, and the GET endpoint working. An
+  initial 404 was caused by `/app/ingredients` instead of `/api/ingredients`;
+  the saved route is now correct. Restart plain `dotnet run` after code edits.
+- The user reports `dotnet build` passed after adding CreateIngredientRequest.
+  Codex inspected the saved code but did not rerun the build at this pause.
+  API formatting/CI checks for this checkpoint have not been run by Codex.
+- Commands from repo root: `dotnet tool restore`, then enter
+  `src/MealPlanner.Api` to run `dotnet ef database update`. This matches the
+  migration exercise's working directory and database location. Start the API
+  from repo root using `dotnet run --project src/MealPlanner.Api --launch-profile http`.
+- Pending files at pause: `.gitignore`, API csproj, Program.cs, root
+  `dotnet-tools.json`, `Contracts/CreateIngredientRequest.cs`, migration files,
+  and this handoff update. Model/context were already committed. The user will
+  commit and push; Codex has not committed or pushed anything.
 
 ## Keeping this file out of main
 
