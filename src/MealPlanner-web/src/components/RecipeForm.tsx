@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type Ingredient, type RecipeIngredient, type Recipe, } from "../data/mockData";
+import { type Ingredient, type RecipeIngredient, type Recipe, } from "../types/mealPlanner";
 import { calculateRecipeNutrition } from "../utils/nutrition";
 import IngredientForm from "./IngredientFrom";
 
@@ -7,7 +7,9 @@ type RecipeFromProps = {
   ingredients: Ingredient[]
   onCancel: () => void
   onSave: (recipe: Omit<Recipe, 'id'>) => void
-  onCreateIngredient: (ingredient: Omit<Ingredient, 'id'>) => Ingredient
+  onCreateIngredient: (
+    ingredient: Omit<Ingredient, 'id'>,
+  ) => Promise<Ingredient>
   initialRecipe?: Recipe
 }
 
@@ -270,8 +272,8 @@ function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient, initial
         creatingIngredient && (
           <section aria-label="Create missing ingredient">
             <IngredientForm
-              onAdd={(values) => {
-                const created = onCreateIngredient(values)
+              onAdd={async (values) => {
+                const created = await onCreateIngredient(values)
                 setSelectedIngredientId(created.id)
                 setCreatingIngredient(false)
               }}

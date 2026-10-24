@@ -9,11 +9,13 @@ import {
   recipes as mockRecipes,
   ingredients as initialIngredients,
 } from "./data/mockData";
-import type { Ingredient, Recipe } from "./data/mockData";
+import type { Ingredient, Recipe } from "./types/mealPlanner";
 import { calculateRecipeNutrition } from "./utils/nutrition";
 
 import { useState, useEffect, useRef } from "react";
 import NutritionBar from "./components/NutritionBar.tsx";
+
+import { getIngredients, createIngredient } from './api/ingredients'
 
 type PlannedRecipe = {
   recipeId: string
@@ -216,6 +218,11 @@ function App() {
     'planner' | 'recipes' | 'ingredients'
   >('planner')
 
+  const [serverIngredients, setServerIngredients] =
+    useState<Ingredient[]>([])
+  const [ingredientsLoading, setIngredientsLoading] = useState(true)
+  const [ingredientsError, setIngredientsError] = useState('')
+
   const [recipeSearch, setRecipeSearch] = useState('')
 
   const [ingredientSearch, setIngredientSearch] = useState('')
@@ -399,6 +406,7 @@ function App() {
     }),
   }))
 
+  { /* Effects */ }
 
   useEffect(() => {
 
@@ -434,6 +442,41 @@ function App() {
       dialog.close()
     }
   }, [selectedRecipe])
+
+  useEffect(() => {
+
+    const controller = new AbortController()
+
+    async function loadIngredients() {
+      try {
+        const data = await getIngredients(controller.signal)
+
+        if (!Array.isArray(data) || !data.every(isIngredient)) {
+          throw new Error('The API returned invalid ingredient data')
+        }
+
+        if (!controller.signal.aborted) {
+          setServerIngredients(data)
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setIngredientsError(
+            error instanceof Error
+              ? error.message
+              : 'Could not load ingredients',
+          )
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIngredientsLoading(false)
+        }
+      }
+
+    }
+    void loadIngredients()
+
+    return () => controller.abort()
+  }, [])
 
   // ### Change quantity ### 
 
@@ -725,15 +768,24 @@ function App() {
   }, [meals])
 
 
-  function addIngredient(ingredient: Omit<Ingredient, 'id'>): Ingredient {
-    const newIngredient = {
-      ...ingredient,
-      id: crypto.randomUUID(),
+  async function addIngredient(
+    values: Omit<Ingredient, 'id'>,
+  ): Promise<Ingredient> {
+    const created = await createIngredient(values)
+
+    if (!isIngredient(created)) {
+      throw new Error('The API returned invalid ingredient data.')
     }
 
-    setIngredients((current) => [...current, newIngredient])
+    setServerIngredients((current) =>
+      [...current, created].sort((first, second) =>
+        first.name.localeCompare(second.name),
+      ),
+    )
 
-    return newIngredient
+    setIngredients((current) => [...current, created])
+
+    return created
   }
 
 
@@ -741,9 +793,9 @@ function App() {
     recipie.name.toLowerCase().includes(recipeSearch.trim().toLowerCase()),
   )
 
-  const filteredIngredients = ingredients.filter((ingredient) =>
+  const filteredIngredients = serverIngredients.filter((ingredient) =>
 
-    ingredient.name.toLocaleLowerCase().includes(
+    ingredient.name.toLowerCase().includes(
       ingredientSearch.trim().toLowerCase(),
     ),
   )
@@ -1084,14 +1136,19 @@ function App() {
 
           {ingredientFormOpen && (
             <IngredientForm
-              onAdd={(ingredient) => {
-                addIngredient(ingredient)
+              onAdd={async (values) => {
+                await addIngredient(values)
                 setIngredientFormOpen(false)
               }}
             />
           )}
 
           <h2>Ingredient catalog</h2>
+
+          {ingredientsLoading && <p role="status">Loading ingredinets</p>}
+          {ingredientsError && <p role="alert">{ingredientsError}</p>}
+
+
 
           <label>
             Search Ingredients
@@ -1124,7 +1181,13 @@ function App() {
               </tbody>
             </table>
           </div>
-          {filteredIngredients.length === 0 && <p>No matching ingredients.</p>}
+
+          {!ingredientsLoading &&
+            !ingredientsError &&
+            filteredIngredients.length === 0 && (
+              <p>No matching ingredients.</p>
+            )}
+
         </section>
       )}
 

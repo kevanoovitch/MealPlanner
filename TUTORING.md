@@ -1,6 +1,6 @@
 # MealPlanner tutoring handoff
 
-Last updated: 2026-10-21
+Last updated: 2026-10-24
 Working branch: `feat/sqlite-backend`
 
 ## How to use this file
@@ -54,13 +54,17 @@ Images and convenient units such as slices can wait.
 - Frontend 1.0 is merged. Current branch starts from merge commit `6282087`.
 - Current milestone: add ASP.NET API endpoints backed by SQLite. Build one
   complete ingredient path first, then tackle recipes and their relationships.
-- Current persistence is browser localStorage. It does not travel with Git;
-  ingredients, recipes, and meal choices may differ between machines.
-- Backend progress: .NET 10 API runs at `http://localhost:5190/` with the `http`
-  launch profile and still returns Hello World. The user confirmed it runs.
+- Ingredient persistence now uses SQLite through the API; recipes, meals, and
+  targets still use localStorage. A temporary browser ingredient list remains
+  for recipe forms and calculations; removing that duplication is next.
+- The user explicitly considers existing browser/mock data disposable: no data
+  migration is needed. Reset mock recipes/meal references when switching sources,
+  but preserve unrelated settings and the real SQLite ingredient records.
+- Backend: .NET 10 API at `http://localhost:5190` using the `http` launch profile.
+  Program.cs now maps ingredient endpoints; the Hello World route was removed.
 - `Models/Ingredient.cs` defines a generated Guid ID, required string Name, and
   decimal kcal/protein/sugar/fat per 100 g. The user understands that `required`
-  enforces initialization, not non-empty input; API validation is still needed.
+  enforces initialization, not non-empty input; POST validates actual values.
 - Installed `Microsoft.EntityFrameworkCore.Sqlite` version `10.0.13`.
   `Data/MealPlannerDbContext.cs` inherits DbContext, takes typed options in its
   constructor, and exposes `DbSet<Ingredient> Ingredients`.
@@ -75,7 +79,11 @@ Images and convenient units such as slices can wait.
   returns JSON. The user confirmed it works with the initially empty table.
 - `Contracts/CreateIngredientRequest.cs` defines required Name and required
   decimal nutrition properties, with no ID. DTO compilation succeeded per user.
-  POST, input-value validation, and React API integration are not implemented.
+- `POST /api/ingredients` rejects blank names, negative kcal, and protein/sugar/
+  fat outside 0–100. It trims Name, generates the ID, persists with
+  SaveChangesAsync, and returns JSON with status 201 (no Location header).
+  The user verified creation, reading back, persistence across restart, and
+  rejection of an out-of-range nutrient value.
 
 ## Current working frontend
 
@@ -102,24 +110,45 @@ Images and convenient units such as slices can wait.
   the current plan. Existing localStorage effects persist imported state.
 - CI now includes a frontend job running `npm ci`, lint, and build. Its exact
   check name is `frontend lint and build` (lowercase).
+- Vite proxies `/api` to `http://localhost:5190`. Both API and Vite must run;
+  the proxy only configures development traffic, not production hosting.
+- `src/api/ingredients.ts` provides GET/POST helpers returning unknown JSON;
+  App validates it with isIngredient. The Ingredients tab displays server data,
+  with loading/error feedback and search.
+- IngredientFrom accepts asynchronous onAdd, awaits it, disables submit while
+  saving, and retains values/display errors on failure.
+- App's shared async addIngredient posts to the API, validates the response,
+  updates both temporary ingredient lists, and returns the saved Ingredient.
+  Both standalone creation and RecipeForm's missing-ingredient callback use it.
+  RecipeForm's onCreateIngredient now returns Promise<Ingredient> and is awaited.
+- Shared Ingredient, RecipeIngredient, and Recipe types now live in
+  `src/types/mealPlanner.ts`; mockData.ts imports these types and contains only
+  mock records. API helpers and components import the shared type definitions.
 
 ## Next lesson
 
-Paused after creating CreateIngredientRequest; the user reports the build passed.
-Resume with the POST handler, not the DTO, connection setup, or initial migration.
+Paused after sharing the async ingredient-creation handler between both forms.
+The user reports frontend lint/build are green. Three integration substeps remain:
 
-1. Add `POST /api/ingredients` accepting CreateIngredientRequest and the injected
-   context. Reject null/blank names, negative kcal, and protein/sugar/fat outside
-   0–100. Trim Name, construct Ingredient so the backend generates its ID, and
-   persist with SaveChangesAsync. Explain the response status and body.
-2. Test a valid POST, read it back with GET, and restart the API to verify
-   persistence. Test missing fields and invalid values without adding records.
-   If returning a resource Location URL, implement a matching GET-by-ID route.
-3. Connect React's ingredient catalog to the API, including development-server
-   cross-origin handling and error/loading states. Discuss existing localStorage
-   data and recipe-ID compatibility before replacing browser persistence.
-4. Extend to recipes, recipe ingredients and quantities, then meal plans. Keep
-   each tutoring exercise small and verify it before introducing more layers.
+1. Unify ingredient state. App currently has serverIngredients for the table and
+   ingredients loaded from browser/mock data for recipe forms/calculations.
+   Replace them with one API-backed list, remove ingredient localStorage loading/
+   saving and mock ingredient imports, and update addIngredient to update only
+   that list. Do not recreate the POST helpers or async form work.
+2. Handle startup and mock references together with that change. Ingredient
+   fetching is async: recipe validation/calculations must wait for loaded data,
+   not reject saved recipes against an initially empty array or throw on missing
+   mock IDs. Remove mock recipe fallback and reset disposable browser recipes/
+   meal placements deliberately. Keep future browser recipes across refreshes;
+   never clear them on every load. Preserve targets and SQLite ingredients.
+3. Verify the full flow: create an ingredient inside a recipe, save the recipe,
+   add it to a meal, refresh, and check nutrition and persistence. Test API-down
+   handling, failed saves retaining input, and loading states. Rerun lint/build
+   and backend build/format checks before a commit/merge checkpoint.
+
+After ingredient integration, recipes and meal plans still need their own API/
+database work. They are a later milestone, not part of the three substeps above.
+Keep tutoring exercises small and verify each before introducing more layers.
 
 ## Observations and checks
 
@@ -145,17 +174,27 @@ Resume with the POST handler, not the DTO, connection setup, or initial migratio
   successful migration setup/application, and the GET endpoint working. An
   initial 404 was caused by `/app/ingredients` instead of `/api/ingredients`;
   the saved route is now correct. Restart plain `dotnet run` after code edits.
-- The user reports `dotnet build` passed after adding CreateIngredientRequest.
-  Codex inspected the saved code but did not rerun the build at this pause.
-  API formatting/CI checks for this checkpoint have not been run by Codex.
+- On 2026-10-24 the user confirmed the API POST returned 201, records survived
+  restart, invalid input returned 400, and the React Ingredients tab showed
+  SQLite data through Vite.
+- An omitted await in the standalone create callback caused isIngredient to
+  validate a Promise and report a false failure even though the POST saved.
+  It is fixed. The user has duplicate test ingredients from retrying; duplicates
+  are understood and no uniqueness restriction or deletion endpoint was added.
+- The user reports lint/build passed after moving types and again after sharing
+  addIngredient and awaiting the nested recipe callback. Codex inspected those
+  edits but did not rerun checks or independently verify the nested browser flow
+  at this pause. API formatting/CI checks remain unverified for this checkpoint.
+- Existing minor API issue: the blank-name branch in Program.cs returns the
+  calories error message. Correct it when reviewing input-validation feedback.
 - Commands from repo root: `dotnet tool restore`, then enter
   `src/MealPlanner.Api` to run `dotnet ef database update`. This matches the
   migration exercise's working directory and database location. Start the API
   from repo root using `dotnet run --project src/MealPlanner.Api --launch-profile http`.
-- Pending files at pause: `.gitignore`, API csproj, Program.cs, root
-  `dotnet-tools.json`, `Contracts/CreateIngredientRequest.cs`, migration files,
-  and this handoff update. Model/context were already committed. The user will
-  commit and push; Codex has not committed or pushed anything.
+- Pending at pause: API Program.cs; frontend App.tsx, IngredientFrom.tsx,
+  RecipeForm.tsx, mockData.ts, nutrition.ts, vite.config.ts; new src/api/ and
+  src/types/ directories; and this handoff update. Earlier model/migration/tool
+  work is committed. Codex has not committed or pushed anything.
 
 ## Keeping this file out of main
 

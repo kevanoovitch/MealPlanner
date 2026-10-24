@@ -1,9 +1,9 @@
 
 import { useState } from 'react'
-import type { Ingredient } from '../data/mockData'
+import type { Ingredient } from '../types/mealPlanner'
 
 type IngredientFromProps = {
-  onAdd: (ingredient: Omit<Ingredient, 'id'>) => void
+  onAdd: (ingredient: Omit<Ingredient, 'id'>) => void | Promise<void>
 }
 
 const nutrientFields = [
@@ -15,12 +15,17 @@ const nutrientFields = [
 
 function IngredientForm({ onAdd }: IngredientFromProps) {
   const [error, setError] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
 
   return (
     <form
       className='ingredient-form'
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault()
+
+        if (isSaving) {
+          return
+        }
 
         const form = event.currentTarget
         const data = new FormData(form)
@@ -47,10 +52,23 @@ function IngredientForm({ onAdd }: IngredientFromProps) {
           return
         }
 
-        onAdd({ name, ...nutrition })
+        setIsSaving(true)
         setError('')
-        form.reset()
-      }}
+
+        try {
+          await onAdd({ name, ...nutrition })
+          form.reset()
+        } catch (error) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : 'Could not save ingredient',
+          )
+        } finally {
+          setIsSaving(false)
+        }
+      }
+      }
     >
       <h2>New Ingredient</h2>
       <p>Enter nutrition per 100 g from the product label.</p>
@@ -63,23 +81,27 @@ function IngredientForm({ onAdd }: IngredientFromProps) {
         />
       </label>
 
-      {nutrientFields.map((field) => (
-        <label key={field.name}>
-          {field.label} per 100 g
-          <input
-            name={field.name}
-            type='number'
-            min="0"
-            max={field.max}
-            step="any"
-            required
-          />
-        </label>
-      ))}
+      {
+        nutrientFields.map((field) => (
+          <label key={field.name}>
+            {field.label} per 100 g
+            <input
+              name={field.name}
+              type='number'
+              min="0"
+              max={field.max}
+              step="any"
+              required
+            />
+          </label>
+        ))
+      }
       {error && <p role='alert'>{error}</p>}
 
-      <button type='submit'> Add ingredient</button>
-    </form>
+      <button type='submit' disabled={isSaving}>
+        {isSaving ? 'Saving...' : 'Add ingredient'}
+      </button>
+    </form >
 
 
   )
