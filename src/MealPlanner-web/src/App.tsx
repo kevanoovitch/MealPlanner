@@ -5,10 +5,7 @@ import RecipePicker from './components/RecipePicker.tsx'
 import IngredientForm from "./components/IngredientFrom.tsx";
 import RecipeFrom from "./components/RecipeForm.tsx";
 
-import {
-  recipes as mockRecipes,
-  ingredients as initialIngredients,
-} from "./data/mockData";
+
 import type { Ingredient, Recipe } from "./types/mealPlanner";
 import { calculateRecipeNutrition } from "./utils/nutrition";
 
@@ -218,7 +215,7 @@ function App() {
     'planner' | 'recipes' | 'ingredients'
   >('planner')
 
-  const [serverIngredients, setServerIngredients] =
+  const [ingredients, setIngredients] =
     useState<Ingredient[]>([])
   const [ingredientsLoading, setIngredientsLoading] = useState(true)
   const [ingredientsError, setIngredientsError] = useState('')
@@ -229,33 +226,6 @@ function App() {
 
   const [importMessage, setImportMessage] = useState('')
 
-  const [ingredients, setIngredients] =
-    useState<Ingredient[]>(() => {
-      try {
-        const stored = localStorage.getItem('mealplanner.ingredients')
-
-        if (stored !== null) {
-          const parsed: unknown = JSON.parse(stored)
-
-          if (Array.isArray(parsed) && parsed.every(isIngredient)) {
-            const ids = new Set(parsed.map((ingredient) => ingredient.id))
-
-            const hasUniqueIds = ids.size === parsed.length
-            const hasRequiredIngredients = mockRecipes.every((recipe) =>
-              recipe.ingredients.every((item) => ids.has(item.ingredientId)),
-            )
-
-            if (hasUniqueIds && hasRequiredIngredients) {
-              return parsed
-            }
-          }
-
-        }
-      } catch {
-        console.warn('Could not load saved ingredients.')
-      }
-      return initialIngredients
-    })
 
   const [recipeCatalog, setRecipeCatalog] = useState<Recipe[]>(() => {
     try {
@@ -265,26 +235,17 @@ function App() {
         const parsed: unknown = JSON.parse(stored)
 
         if (Array.isArray(parsed) && parsed.every(isRecipe)) {
-          const recipeIds = new Set(parsed.map((recipe) => recipe.id))
-          const ingredientIds = new Set(
-            ingredients.map((ingredient) => ingredient.id),
-          )
-          const validReferences = parsed.every((recipe) =>
-            recipe.ingredients.every((item) =>
-              ingredientIds.has(item.ingredientId),
-            ),
-          )
+          const ids = new Set(parsed.map((recipe) => recipe.id))
 
-          if (recipeIds.size === parsed.length && validReferences) {
+          if (ids.size === parsed.length) {
             return parsed
           }
         }
-        console.warn('Saved recipes are invalid; using starter recipes.')
       }
     } catch {
       console.warn('Could not load saved recipes.')
     }
-    return mockRecipes
+    return []
   })
 
 
@@ -312,7 +273,13 @@ function App() {
     setEditingRecipeId(null)
   }
 
-  const recipes = recipeCatalog.map((recipe) => {
+  const availableRecipies = recipeCatalog.filter((recipe) =>
+    recipe.ingredients.every((item) =>
+      ingredients.some((ingredient) => ingredient.id === item.ingredientId),
+    ),
+  )
+
+  const recipes = availableRecipies.map((recipe) => {
     const nutrition = calculateRecipeNutrition(recipe, ingredients);
 
 
@@ -456,7 +423,7 @@ function App() {
         }
 
         if (!controller.signal.aborted) {
-          setServerIngredients(data)
+          setIngredients(data)
         }
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -777,12 +744,6 @@ function App() {
       throw new Error('The API returned invalid ingredient data.')
     }
 
-    setServerIngredients((current) =>
-      [...current, created].sort((first, second) =>
-        first.name.localeCompare(second.name),
-      ),
-    )
-
     setIngredients((current) => [...current, created])
 
     return created
@@ -793,13 +754,25 @@ function App() {
     recipie.name.toLowerCase().includes(recipeSearch.trim().toLowerCase()),
   )
 
-  const filteredIngredients = serverIngredients.filter((ingredient) =>
+  const filteredIngredients = ingredients.filter((ingredient) =>
 
     ingredient.name.toLowerCase().includes(
       ingredientSearch.trim().toLowerCase(),
     ),
   )
 
+  if (ingredientsLoading) {
+    return <main><p role="status">Loading ingredients...</p></main>
+  }
+
+  if (ingredientsError) {
+    return (
+      <main>
+        <p role="alert">{ingredientsError}</p>
+        <p>Check that the API is running, then refresh.</p>
+      </main>
+    )
+  }
 
   // ### App() return ### 
 
@@ -1019,6 +992,13 @@ function App() {
       {activeView === 'recipes' && (
         <section>
           <h2>Recipe catalog</h2>
+
+          {availableRecipies.length < recipeCatalog.length && (
+            <p role="alert">
+              Some saved recipes reference ingredients that are unavailable.
+            </p>
+          )}
+
           <label>
             Search recipe
             <input
