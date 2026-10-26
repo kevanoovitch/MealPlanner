@@ -23,4 +23,27 @@ export type Recipe = {
   imageUrl?: string | null
 }
 
+export type PlannedRecipe = {
+  recipeId: string
+  quantity: number
+}
+
+export type Meal = {
+  id: string
+  title: string
+  recipes: PlannedRecipe[]
+}
+
+export type ShoppingListOptions = {
+  days: number
+  skippedMeals: Record<string, number>
+}
+
+export type ShoppingListItem = {
+  ingredientId: string
+  name: string
+  amountGrams: number
+}
+
+
 

@@ -6,7 +6,7 @@ import IngredientForm from "./components/IngredientFrom.tsx";
 import RecipeFrom from "./components/RecipeForm.tsx";
 
 
-import type { Ingredient, Recipe } from "./types/mealPlanner";
+import type { Ingredient, Recipe, Meal } from "./types/mealPlanner";
 import { calculateRecipeNutrition } from "./utils/nutrition";
 
 import { useState, useEffect, useRef } from "react";
@@ -16,17 +16,10 @@ import { getIngredients, createIngredient } from './api/ingredients'
 
 import { getRecipes, createRecipe, updateRecipe } from "./api/recipes.ts";
 
+import ShoppingList from './components/ShoppingList'
 
-type PlannedRecipe = {
-  recipeId: string
-  quantity: number
-}
 
-type Meal = {
-  id: string
-  title: string
-  recipes: PlannedRecipe[]
-}
+
 const initialMeals: Meal[] = [
   {
     id: 'Breakfast',
@@ -215,7 +208,7 @@ function App() {
 
 
   const [activeView, setActiveView] = useState<
-    'planner' | 'recipes' | 'ingredients'
+    'planner' | 'recipes' | 'ingredients' | 'shopping'
   >('planner')
 
   const [ingredients, setIngredients] =
@@ -770,6 +763,8 @@ function App() {
     <main>
       <h1>Meal Planner</h1>
 
+      { /* Navigation bar */}
+
       <nav aria-label="Main navigation" className="main-nav">
         <button
           type="button"
@@ -791,7 +786,24 @@ function App() {
           onClick={() => setActiveView('ingredients')}>
           ingredients
         </button>
+
+        <button
+          type="button"
+          aria-current={activeView === 'shopping' ? 'page' : undefined}
+          onClick={() => setActiveView('shopping')}
+        >
+          Shopping list
+        </button>
+
       </nav>
+
+      <div hidden={activeView !== 'shopping'}>
+        <ShoppingList
+          meals={meals}
+          recipes={recipeCatalog}
+          ingredients={ingredients}
+        />
+      </div>
 
 
       {activeView === 'planner' && (
