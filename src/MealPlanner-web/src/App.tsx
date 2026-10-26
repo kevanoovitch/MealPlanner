@@ -14,6 +14,9 @@ import NutritionBar from "./components/NutritionBar.tsx";
 
 import { getIngredients, createIngredient } from './api/ingredients'
 
+import { getRecipes, createRecipe, updateRecipe } from "./api/recipes.ts";
+
+
 type PlannedRecipe = {
   recipeId: string
   quantity: number
@@ -130,7 +133,7 @@ function isRecipe(value: unknown): value is Recipe {
     return false
   }
 
-  if ('imageUrl' in value && typeof value.imageUrl !== 'string') {
+  if ('imageUrl' in value && value.imageUrl !== null && typeof value.imageUrl !== 'string') {
     return false
   }
 
@@ -217,8 +220,8 @@ function App() {
 
   const [ingredients, setIngredients] =
     useState<Ingredient[]>([])
-  const [ingredientsLoading, setIngredientsLoading] = useState(true)
-  const [ingredientsError, setIngredientsError] = useState('')
+  const [catalogsLoading, setCatalogsLoading] = useState(true)
+  const [catalogsError, setCatalogsError] = useState('')
 
   const [recipeSearch, setRecipeSearch] = useState('')
 
@@ -227,28 +230,7 @@ function App() {
   const [importMessage, setImportMessage] = useState('')
 
 
-  const [recipeCatalog, setRecipeCatalog] = useState<Recipe[]>(() => {
-    try {
-      const stored = localStorage.getItem('mealplanner.recipes')
-
-      if (stored !== null) {
-        const parsed: unknown = JSON.parse(stored)
-
-        if (Array.isArray(parsed) && parsed.every(isRecipe)) {
-          const ids = new Set(parsed.map((recipe) => recipe.id))
-
-          if (ids.size === parsed.length) {
-            return parsed
-          }
-        }
-      }
-    } catch {
-      console.warn('Could not load saved recipes.')
-    }
-    return []
-  })
-
-
+  const [recipeCatalog, setRecipeCatalog] = useState<Recipe[]>([])
   const [recipeFormOpen, setRecipeFromOpen] = useState(false)
 
   const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null)
@@ -257,21 +239,35 @@ function App() {
     (recipe) => recipe.id === editingRecipeId,
   )
 
-  function saveRecipe(draft: Omit<Recipe, 'id'>) {
+  async function saveRecipe(draft: Omit<Recipe, 'id'>): Promise<void> {
+
+    const recipeId = editingRecipeId
+
+    const saved = recipeId === null
+      ? await createRecipe(draft)
+      : await updateRecipe(recipeId, draft)
+
+    if (!isRecipe(saved)) {
+      throw new Error('The API returned invalid recipe data.')
+    }
+
     setRecipeCatalog((current) => {
-      if (editingRecipeId !== null) {
-        return current.map((recipe) =>
-          recipe.id === editingRecipeId
-            ? { ...recipe, ...draft }
-            : recipe,
+      const updated = recipeId === null
+        ? [...current, saved]
+        : current.map((recipe) =>
+          recipe.id === recipeId ? saved : recipe,
         )
-      }
-      return [...current, { ...draft, id: crypto.randomUUID() }]
+
+      return updated.sort((first, second) =>
+        first.name.localeCompare(second.name),
+      )
     })
 
     setRecipeFromOpen(false)
     setEditingRecipeId(null)
+
   }
+
 
   const availableRecipies = recipeCatalog.filter((recipe) =>
     recipe.ingredients.every((item) =>
@@ -376,27 +372,6 @@ function App() {
   { /* Effects */ }
 
   useEffect(() => {
-
-    try {
-      localStorage.setItem('mealplanner.recipes',
-        JSON.stringify(recipeCatalog),
-      )
-    } catch {
-      console.warn('Could not save recipes in this browser.')
-    }
-  }, [recipeCatalog])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('mealplanner.ingredients',
-        JSON.stringify(ingredients),
-      )
-    } catch {
-      console.warn('Could not save ingredients in this browser.')
-    }
-  }, [ingredients])
-
-  useEffect(() => {
     const dialog = detailsRef.current
 
     if (!dialog) {
@@ -414,33 +389,48 @@ function App() {
 
     const controller = new AbortController()
 
-    async function loadIngredients() {
+    async function loadCatalogs() {
       try {
-        const data = await getIngredients(controller.signal)
+        const [ingredientData, recipeData] = await Promise.all([
+          getIngredients(controller.signal),
+          getRecipes(controller.signal),
+        ])
 
-        if (!Array.isArray(data) || !data.every(isIngredient)) {
-          throw new Error('The API returned invalid ingredient data')
+        if (
+          !Array.isArray(ingredientData) ||
+          !ingredientData.every(isIngredient)
+        ) {
+          throw new Error('The API returned invalid ingredient data.')
         }
 
+        if (
+          !Array.isArray(recipeData) ||
+          !recipeData.every(isRecipe)
+        ) {
+          throw new Error("The API returned invalid recipe data.")
+        }
+
+
         if (!controller.signal.aborted) {
-          setIngredients(data)
+          setIngredients(ingredientData)
+          setRecipeCatalog(recipeData)
         }
       } catch (error) {
         if (!controller.signal.aborted) {
-          setIngredientsError(
+          setCatalogsError(
             error instanceof Error
               ? error.message
-              : 'Could not load ingredients',
+              : 'Could not load catalogs.'
           )
         }
       } finally {
         if (!controller.signal.aborted) {
-          setIngredientsLoading(false)
+          setCatalogsLoading(false)
         }
       }
-
     }
-    void loadIngredients()
+
+    void loadCatalogs()
 
     return () => controller.abort()
   }, [])
@@ -761,14 +751,14 @@ function App() {
     ),
   )
 
-  if (ingredientsLoading) {
-    return <main><p role="status">Loading ingredients...</p></main>
+  if (catalogsLoading) {
+    return <main><p role="status">Loading catalogs...</p></main>
   }
 
-  if (ingredientsError) {
+  if (catalogsError) {
     return (
       <main>
-        <p role="alert">{ingredientsError}</p>
+        <p role="alert">{catalogsError}</p>
         <p>Check that the API is running, then refresh.</p>
       </main>
     )
@@ -1125,8 +1115,8 @@ function App() {
 
           <h2>Ingredient catalog</h2>
 
-          {ingredientsLoading && <p role="status">Loading ingredinets</p>}
-          {ingredientsError && <p role="alert">{ingredientsError}</p>}
+          {catalogsLoading && <p role="status">Loading ingredinets</p>}
+          {catalogsError && <p role="alert">{catalogsError}</p>}
 
 
 
@@ -1162,8 +1152,8 @@ function App() {
             </table>
           </div>
 
-          {!ingredientsLoading &&
-            !ingredientsError &&
+          {!catalogsLoading &&
+            !catalogsError &&
             filteredIngredients.length === 0 && (
               <p>No matching ingredients.</p>
             )}

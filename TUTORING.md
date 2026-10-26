@@ -1,6 +1,6 @@
 # MealPlanner tutoring handoff
 
-Last updated: 2026-10-25
+Last updated: 2026-10-26
 Working branch: `feat/sqlite-backend`
 
 ## How to use this file
@@ -54,10 +54,9 @@ Images and convenient units such as slices can wait.
 - Frontend 1.0 is merged. Current branch starts from merge commit `6282087`.
 - Current milestone: add ASP.NET API endpoints backed by SQLite. Build one
   complete ingredient path first, then tackle recipes and their relationships.
-- Ingredient persistence uses SQLite through the API; recipes, meals, and
-  targets still use localStorage. All views now share one API-backed ingredient
-  list. One obsolete effect still writes ingredients to localStorage and should
-  be removed; that entry is no longer used to load ingredients.
+- Ingredients and recipes now use SQLite through the API, including recipe
+  editing. Meals and daily targets still use localStorage. Obsolete ingredient
+  and recipe localStorage effects have been removed.
 - The user explicitly considers existing browser/mock data disposable: no data
   migration is needed. Reset mock recipes/meal references when switching sources,
   but preserve unrelated settings and the real SQLite ingredient records.
@@ -85,6 +84,17 @@ Images and convenient units such as slices can wait.
   SaveChangesAsync, and returns JSON with status 201 (no Location header).
   The user verified creation, reading back, persistence across restart, and
   rejection of an out-of-range nutrient value.
+- Recipe and RecipeIngredient models are registered in the context. AddRecipes
+  migration creates Recipes and RecipeIngredients, with a composite recipe/
+  ingredient key, cascade deletion from Recipe, and restricted deletion from
+  Ingredient. The user applied it and verified recipe persistence.
+- Recipe GET/POST/PUT endpoints are implemented. POST and PUT share
+  ValidateRecipeRequest, returning IResult errors or null on success. They check
+  names/instructions, servings, positive grams, duplicate IDs, and existence of
+  referenced ingredients. PUT retains the recipe ID, updates matching entries,
+  removes omitted entries, and adds new entries in one SaveChangesAsync call.
+- Ingredient editing/deletion is deferred to a separate feature. Neither is
+  implemented; do not imply a delete/recreate API workflow already exists.
 
 ## Current working frontend
 
@@ -125,28 +135,32 @@ Images and convenient units such as slices can wait.
 - Shared Ingredient, RecipeIngredient, and Recipe types now live in
   `src/types/mealPlanner.ts`; mockData.ts imports these types and contains only
   mock records. API helpers and components import the shared type definitions.
+- `src/api/recipes.ts` implements GET, POST, and PUT helpers. App loads both
+  catalogs with Promise.all, validates JSON, and gates rendering on shared
+  catalogsLoading/catalogsError state. Recipe imageUrl accepts null as returned
+  by the API. Creation/editing uses server responses to update catalog state.
+- RecipeForm awaits onSave, displays errors without discarding the draft, and
+  disables Save/Cancel during saving. New recipe and Edit are enabled again.
 
 ## Next lesson
 
-Ingredient state is unified and the user confirmed all three browser checks:
-recipe/meal/nutrition survive refresh, nested ingredient creation persists, and
-API-down refresh displays an error. The user reports frontend lint/build pass.
+The user wants to commit/push and prepare a PR for SQLite-backed ingredient and
+recipe catalogs. Recipe persistence and editing now work; meal-plan backend
+storage is a separate remaining milestone.
 
-1. Remove the obsolete effect writing `mealplanner.ingredients` to localStorage
-   in App.tsx. Keep effects saving recipes, meals, and targets. Correct the
-   backend blank-name error message before the checkpoint and rerun relevant
-   checks; neither cleanup was performed by Codex.
-2. Commit/push the ingredient-integration checkpoint when instructed by the
-   user. Backend build/format and CI results for these edits remain unverified.
-3. Start recipe persistence: model Recipe and RecipeIngredient in C#, with
-   ingredient references and per-recipe grams. Explain the relationship and
-   configure keys/foreign keys before generating the next migration.
-4. Add recipe DTOs/endpoints and connect the frontend in small verified steps.
-   Recipes currently remain in localStorage, even when using SQLite ingredients.
-   Meal-plan persistence is a subsequent milestone.
+1. Run final frontend lint/build and backend build/format checks, review the
+   diff, and commit all intended models, contracts, migrations, API/client/form
+   changes, and this handoff on feat/sqlite-backend. Do not commit database files.
+2. Prepare a separate PR branch without TUTORING.md, preserving this working
+   branch's handoff. Gitignore does not exclude a tracked file from merging.
+   Review the PR and wait for required CI checks before merging. Codex has not
+   created branches, committed, pushed, or opened a PR for this checkpoint.
+3. After merging, start the meal-plan persistence lesson from updated main on a
+   new feature branch with a copied handoff. Agree on named daily-plan scope and
+   target ownership before introducing models, migration, endpoints, and React
+   integration. Do not add weekly scheduling without discussing it.
 
-Recipe startup now loads structurally valid unique-ID records without checking
-against an initially empty ingredient list. Nutrition uses only recipes whose
+Nutrition uses only recipes whose
 ingredients are available (variable is spelled `availableRecipies` in the saved
 code), with a warning for missing references. Loading/error returns come after
 all hooks. Mock imports and recipe fallback were removed; do not reset future
@@ -192,15 +206,26 @@ agreement; preserve SQLite data and unrelated targets.
   and confirmed recipe creation/use, refresh persistence, nested ingredient
   persistence, and API-down handling. Codex inspected the state changes and
   found the obsolete ingredient-saving effect still present.
-- Existing minor API issue: the blank-name branch in Program.cs returns the
-  calories error message. Correct it when reviewing input-validation feedback.
+- The blank ingredient-name error was corrected. Recipe servings feedback still
+  has a cosmetic typo: "at leat" instead of "at least".
+- On 2026-10-25/26 the user verified recipe POST/GET persistence, explicit 400
+  rejection for servings 0, and successful PUT using a recipe ID in the URL and
+  existing ingredient IDs in the body. Nonexistent-ingredient rejection was
+  suggested but not explicitly confirmed. GET initially omitted Servings; fixed.
+- On 2026-10-26 a singular Ingredient property in the PUT response caused
+  isRecipe to reject it after saving; changed to Ingredients, and the user
+  confirmed editing works. They also confirmed the requested browser checks for
+  refresh/nutrition, ingredient add/remove, and API-down draft retention.
+- Latest final frontend lint/build, backend build/format, and CI results after
+  the PUT response correction have not been independently checked by Codex.
 - Commands from repo root: `dotnet tool restore`, then enter
   `src/MealPlanner.Api` to run `dotnet ef database update`. This matches the
   migration exercise's working directory and database location. Start the API
   from repo root using `dotnet run --project src/MealPlanner.Api --launch-profile http`.
-- Current pending files: frontend App.tsx, API Program.cs, and this handoff
-  update. Other frontend API/type/form work is now committed. Codex has not
-  committed or pushed anything.
+- Pending files include frontend App.tsx, RecipeForm.tsx, shared types and new
+  api/recipes.ts; backend context, Program.cs, Recipe/RecipeIngredient models,
+  recipe request contracts, AddRecipes migration and snapshot; and this handoff.
+  Codex has not committed or pushed anything.
 
 ## Keeping this file out of main
 

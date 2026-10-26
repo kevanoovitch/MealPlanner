@@ -20,7 +20,7 @@ export type Recipe = {
   servings: number
   ingredients: RecipeIngredient[]
   instructions: string
-  imageUrl?: string
+  imageUrl?: string | null
 }
 
 
