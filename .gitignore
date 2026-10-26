@@ -78,3 +78,7 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Custom 
+/src/MealPlanner.Api/mealplanner.db*
+

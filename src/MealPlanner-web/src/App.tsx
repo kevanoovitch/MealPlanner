@@ -5,15 +5,17 @@ import RecipePicker from './components/RecipePicker.tsx'
 import IngredientForm from "./components/IngredientFrom.tsx";
 import RecipeFrom from "./components/RecipeForm.tsx";
 
-import {
-  recipes as mockRecipes,
-  ingredients as initialIngredients,
-} from "./data/mockData";
-import type { Ingredient, Recipe } from "./data/mockData";
+
+import type { Ingredient, Recipe } from "./types/mealPlanner";
 import { calculateRecipeNutrition } from "./utils/nutrition";
 
 import { useState, useEffect, useRef } from "react";
 import NutritionBar from "./components/NutritionBar.tsx";
+
+import { getIngredients, createIngredient } from './api/ingredients'
+
+import { getRecipes, createRecipe, updateRecipe } from "./api/recipes.ts";
+
 
 type PlannedRecipe = {
   recipeId: string
@@ -131,7 +133,7 @@ function isRecipe(value: unknown): value is Recipe {
     return false
   }
 
-  if ('imageUrl' in value && typeof value.imageUrl !== 'string') {
+  if ('imageUrl' in value && value.imageUrl !== null && typeof value.imageUrl !== 'string') {
     return false
   }
 
@@ -216,71 +218,19 @@ function App() {
     'planner' | 'recipes' | 'ingredients'
   >('planner')
 
+  const [ingredients, setIngredients] =
+    useState<Ingredient[]>([])
+  const [catalogsLoading, setCatalogsLoading] = useState(true)
+  const [catalogsError, setCatalogsError] = useState('')
+
   const [recipeSearch, setRecipeSearch] = useState('')
 
   const [ingredientSearch, setIngredientSearch] = useState('')
 
   const [importMessage, setImportMessage] = useState('')
 
-  const [ingredients, setIngredients] =
-    useState<Ingredient[]>(() => {
-      try {
-        const stored = localStorage.getItem('mealplanner.ingredients')
 
-        if (stored !== null) {
-          const parsed: unknown = JSON.parse(stored)
-
-          if (Array.isArray(parsed) && parsed.every(isIngredient)) {
-            const ids = new Set(parsed.map((ingredient) => ingredient.id))
-
-            const hasUniqueIds = ids.size === parsed.length
-            const hasRequiredIngredients = mockRecipes.every((recipe) =>
-              recipe.ingredients.every((item) => ids.has(item.ingredientId)),
-            )
-
-            if (hasUniqueIds && hasRequiredIngredients) {
-              return parsed
-            }
-          }
-
-        }
-      } catch {
-        console.warn('Could not load saved ingredients.')
-      }
-      return initialIngredients
-    })
-
-  const [recipeCatalog, setRecipeCatalog] = useState<Recipe[]>(() => {
-    try {
-      const stored = localStorage.getItem('mealplanner.recipes')
-
-      if (stored !== null) {
-        const parsed: unknown = JSON.parse(stored)
-
-        if (Array.isArray(parsed) && parsed.every(isRecipe)) {
-          const recipeIds = new Set(parsed.map((recipe) => recipe.id))
-          const ingredientIds = new Set(
-            ingredients.map((ingredient) => ingredient.id),
-          )
-          const validReferences = parsed.every((recipe) =>
-            recipe.ingredients.every((item) =>
-              ingredientIds.has(item.ingredientId),
-            ),
-          )
-
-          if (recipeIds.size === parsed.length && validReferences) {
-            return parsed
-          }
-        }
-        console.warn('Saved recipes are invalid; using starter recipes.')
-      }
-    } catch {
-      console.warn('Could not load saved recipes.')
-    }
-    return mockRecipes
-  })
-
-
+  const [recipeCatalog, setRecipeCatalog] = useState<Recipe[]>([])
   const [recipeFormOpen, setRecipeFromOpen] = useState(false)
 
   const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null)
@@ -289,23 +239,43 @@ function App() {
     (recipe) => recipe.id === editingRecipeId,
   )
 
-  function saveRecipe(draft: Omit<Recipe, 'id'>) {
+  async function saveRecipe(draft: Omit<Recipe, 'id'>): Promise<void> {
+
+    const recipeId = editingRecipeId
+
+    const saved = recipeId === null
+      ? await createRecipe(draft)
+      : await updateRecipe(recipeId, draft)
+
+    if (!isRecipe(saved)) {
+      throw new Error('The API returned invalid recipe data.')
+    }
+
     setRecipeCatalog((current) => {
-      if (editingRecipeId !== null) {
-        return current.map((recipe) =>
-          recipe.id === editingRecipeId
-            ? { ...recipe, ...draft }
-            : recipe,
+      const updated = recipeId === null
+        ? [...current, saved]
+        : current.map((recipe) =>
+          recipe.id === recipeId ? saved : recipe,
         )
-      }
-      return [...current, { ...draft, id: crypto.randomUUID() }]
+
+      return updated.sort((first, second) =>
+        first.name.localeCompare(second.name),
+      )
     })
 
     setRecipeFromOpen(false)
     setEditingRecipeId(null)
+
   }
 
-  const recipes = recipeCatalog.map((recipe) => {
+
+  const availableRecipies = recipeCatalog.filter((recipe) =>
+    recipe.ingredients.every((item) =>
+      ingredients.some((ingredient) => ingredient.id === item.ingredientId),
+    ),
+  )
+
+  const recipes = availableRecipies.map((recipe) => {
     const nutrition = calculateRecipeNutrition(recipe, ingredients);
 
 
@@ -399,27 +369,7 @@ function App() {
     }),
   }))
 
-
-  useEffect(() => {
-
-    try {
-      localStorage.setItem('mealplanner.recipes',
-        JSON.stringify(recipeCatalog),
-      )
-    } catch {
-      console.warn('Could not save recipes in this browser.')
-    }
-  }, [recipeCatalog])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('mealplanner.ingredients',
-        JSON.stringify(ingredients),
-      )
-    } catch {
-      console.warn('Could not save ingredients in this browser.')
-    }
-  }, [ingredients])
+  { /* Effects */ }
 
   useEffect(() => {
     const dialog = detailsRef.current
@@ -434,6 +384,56 @@ function App() {
       dialog.close()
     }
   }, [selectedRecipe])
+
+  useEffect(() => {
+
+    const controller = new AbortController()
+
+    async function loadCatalogs() {
+      try {
+        const [ingredientData, recipeData] = await Promise.all([
+          getIngredients(controller.signal),
+          getRecipes(controller.signal),
+        ])
+
+        if (
+          !Array.isArray(ingredientData) ||
+          !ingredientData.every(isIngredient)
+        ) {
+          throw new Error('The API returned invalid ingredient data.')
+        }
+
+        if (
+          !Array.isArray(recipeData) ||
+          !recipeData.every(isRecipe)
+        ) {
+          throw new Error("The API returned invalid recipe data.")
+        }
+
+
+        if (!controller.signal.aborted) {
+          setIngredients(ingredientData)
+          setRecipeCatalog(recipeData)
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setCatalogsError(
+            error instanceof Error
+              ? error.message
+              : 'Could not load catalogs.'
+          )
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setCatalogsLoading(false)
+        }
+      }
+    }
+
+    void loadCatalogs()
+
+    return () => controller.abort()
+  }, [])
 
   // ### Change quantity ### 
 
@@ -725,15 +725,18 @@ function App() {
   }, [meals])
 
 
-  function addIngredient(ingredient: Omit<Ingredient, 'id'>): Ingredient {
-    const newIngredient = {
-      ...ingredient,
-      id: crypto.randomUUID(),
+  async function addIngredient(
+    values: Omit<Ingredient, 'id'>,
+  ): Promise<Ingredient> {
+    const created = await createIngredient(values)
+
+    if (!isIngredient(created)) {
+      throw new Error('The API returned invalid ingredient data.')
     }
 
-    setIngredients((current) => [...current, newIngredient])
+    setIngredients((current) => [...current, created])
 
-    return newIngredient
+    return created
   }
 
 
@@ -743,11 +746,23 @@ function App() {
 
   const filteredIngredients = ingredients.filter((ingredient) =>
 
-    ingredient.name.toLocaleLowerCase().includes(
+    ingredient.name.toLowerCase().includes(
       ingredientSearch.trim().toLowerCase(),
     ),
   )
 
+  if (catalogsLoading) {
+    return <main><p role="status">Loading catalogs...</p></main>
+  }
+
+  if (catalogsError) {
+    return (
+      <main>
+        <p role="alert">{catalogsError}</p>
+        <p>Check that the API is running, then refresh.</p>
+      </main>
+    )
+  }
 
   // ### App() return ### 
 
@@ -967,6 +982,13 @@ function App() {
       {activeView === 'recipes' && (
         <section>
           <h2>Recipe catalog</h2>
+
+          {availableRecipies.length < recipeCatalog.length && (
+            <p role="alert">
+              Some saved recipes reference ingredients that are unavailable.
+            </p>
+          )}
+
           <label>
             Search recipe
             <input
@@ -1084,14 +1106,19 @@ function App() {
 
           {ingredientFormOpen && (
             <IngredientForm
-              onAdd={(ingredient) => {
-                addIngredient(ingredient)
+              onAdd={async (values) => {
+                await addIngredient(values)
                 setIngredientFormOpen(false)
               }}
             />
           )}
 
           <h2>Ingredient catalog</h2>
+
+          {catalogsLoading && <p role="status">Loading ingredinets</p>}
+          {catalogsError && <p role="alert">{catalogsError}</p>}
+
+
 
           <label>
             Search Ingredients
@@ -1124,7 +1151,13 @@ function App() {
               </tbody>
             </table>
           </div>
-          {filteredIngredients.length === 0 && <p>No matching ingredients.</p>}
+
+          {!catalogsLoading &&
+            !catalogsError &&
+            filteredIngredients.length === 0 && (
+              <p>No matching ingredients.</p>
+            )}
+
         </section>
       )}
 

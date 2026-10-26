@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { type Ingredient, type RecipeIngredient, type Recipe, } from "../data/mockData";
+import { type Ingredient, type RecipeIngredient, type Recipe, } from "../types/mealPlanner";
 import { calculateRecipeNutrition } from "../utils/nutrition";
 import IngredientForm from "./IngredientFrom";
 
 type RecipeFromProps = {
   ingredients: Ingredient[]
   onCancel: () => void
-  onSave: (recipe: Omit<Recipe, 'id'>) => void
-  onCreateIngredient: (ingredient: Omit<Ingredient, 'id'>) => Ingredient
+  onSave: (recipe: Omit<Recipe, 'id'>) => Promise<void>
+  onCreateIngredient: (
+    ingredient: Omit<Ingredient, 'id'>,
+  ) => Promise<Ingredient>
   initialRecipe?: Recipe
 }
 
@@ -19,6 +21,10 @@ function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient, initial
   const [instructions, setInstructions] = useState(
     initialRecipe?.instructions ?? '',
   )
+
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+
 
   const [creatingIngredient, setCreatingIngredient] = useState(false)
 
@@ -66,15 +72,28 @@ function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient, initial
     <>
       <form
         className="recipe-form"
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault()
 
-          if (!canSave || creatingIngredient) {
+          if (!canSave || creatingIngredient || isSaving) {
             return
           }
 
-          onSave(draft)
+          setIsSaving(true)
+          setSaveError('')
 
+          try {
+            await onSave(draft)
+          } catch (error) {
+            setSaveError(
+              error instanceof Error
+                ? error.message
+                : 'Could not save recipe.'
+            )
+          }
+          finally {
+            setIsSaving(false)
+          }
         }}
       >
         <h2>{initialRecipe ? 'Edit recipe' : 'New recipe'}</h2>
@@ -252,11 +271,15 @@ function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient, initial
         </section>
 
         {/* Save button */}
+
+        {saveError && <p role="alert">{saveError}</p>}
+
         <div className="form-actions">
-          <button type="submit" disabled={!canSave || creatingIngredient}>
-            Save recipe
+          <button type="submit" disabled={!canSave || creatingIngredient || isSaving}>
+
+            {isSaving ? 'Saving...' : 'Save recipe'}
           </button>
-          <button type="button" onClick={onCancel}>
+          <button type="button" onClick={onCancel} disabled={isSaving}>
             Cancel
           </button>
         </div>
@@ -270,8 +293,8 @@ function RecipeFrom({ ingredients, onCancel, onSave, onCreateIngredient, initial
         creatingIngredient && (
           <section aria-label="Create missing ingredient">
             <IngredientForm
-              onAdd={(values) => {
-                const created = onCreateIngredient(values)
+              onAdd={async (values) => {
+                const created = await onCreateIngredient(values)
                 setSelectedIngredientId(created.id)
                 setCreatingIngredient(false)
               }}
