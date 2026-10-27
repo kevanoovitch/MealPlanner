@@ -371,3 +371,51 @@ dialog::backdrop {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* Shopping list view and elements */
+
+.shopping-list {
+  display: grid;
+  gap: 20px;
+  box-sizing: border-box;
+  max-width: 900px;
+  margin: 24px auto;
+  padding: 20px;
+  text-align: left;
+}
+
+.shopping-list label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.shopping-list>label {
+  max-width: 240px;
+}
+
+.shopping-list fieldset {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: 16px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.shopping-list input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  font: inherit;
+}
+
+.shopping-list ul {
+  margin: 0;
+  padding-left: 24px;
+}
+
+.shopping-list li {
+  padding-block: 6px;
+}
