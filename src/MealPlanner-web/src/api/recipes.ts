@@ -66,3 +66,18 @@ export async function updateRecipe(
 
   return data
 }
+
+export async function deleteRecipe(id: string): Promise<void> {
+  const response = await fetch(`/api/recipes/${id}`, {
+    method: 'DELETE',
+  })
+
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'This recipe no longer exists. Refresh the catalog.'
+        : `Could not delete recipe (${response.status}).`,
+    )
+  }
+}
+

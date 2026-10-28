@@ -38,6 +38,55 @@ export async function createIngredient(
 
 }
 
+export async function updateIngredient(
+  id: string,
+  ingredient: Omit<Ingredient, 'id'>,
+): Promise<unknown> {
+  const response = await fetch(`/api/ingredeints/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(ingredient),
+  })
+
+  const data: unknown = response.status === 404
+    ? null
+    : await response.json()
+
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? 'This ingredient no longer exists.'
+        : typeof data === 'string'
+          ? data
+          : `Could not update ingredeint (${response.status}).`,
+    )
+  }
+
+  return data
+}
+
+export async function deleteIngredient(id: string): Promise<void> {
+  const response = await fetch(`/api/ingredients/${id}`, {
+    method: 'DELETE',
+  })
+
+  if (!response.ok) {
+    const data: unknown = response.status === 409
+      ? await response.json()
+      : null
+
+    throw new Error(
+      response.status === 404
+        ? 'This ingredient no longer exists. Refresh the catalog.'
+        : typeof data === 'string'
+          ? data
+          : `Could not delete ingredient (${response.status}).`,
+    )
+  }
+}
+
 
 
 

@@ -31,25 +31,11 @@ app.MapPost(
     "/api/ingredients",
     async (CreateIngredientRequest request, MealPlannerDbContext db) =>
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
-        {
-            return Results.BadRequest("Enter an ingredient name.");
-        }
+        var validationError = ValidateIngredientRequest(request);
 
-        if (request.KcalPer100g < 0)
+        if (validationError is not null)
         {
-            return Results.BadRequest("Calories cannot be negative");
-        }
-
-        if (
-            request.ProteinPer100g is < 0 or > 100
-            || request.SugarPer100g is < 0 or > 100
-            || request.FatPer100g is < 0 or > 100
-        )
-        {
-            return Results.BadRequest(
-                "Protein, sugar, and fat must each be betweeen 0 and 100 g per 100 g."
-            );
+            return validationError;
         }
 
         var ingredient = new Ingredient
@@ -223,6 +209,95 @@ app.MapPut(
     }
 );
 
+// PUT ingredients //
+
+app.MapPut(
+    "/api/ingredients/{id:guid}",
+    async (Guid id, CreateIngredientRequest request, MealPlannerDbContext db) =>
+    {
+        var ingredient = await db.Ingredients.FindAsync(id);
+
+        if (ingredient is null)
+        {
+            return Results.NotFound();
+        }
+
+        var validationError = ValidateIngredientRequest(request);
+
+        if (validationError is not null)
+        {
+            return validationError;
+        }
+
+        ingredient.Name = request.Name.Trim();
+        ingredient.KcalPer100g = request.KcalPer100g;
+        ingredient.ProteinPer100g = request.ProteinPer100g;
+        ingredient.SugarPer100g = request.SugarPer100g;
+        ingredient.FatPer100g = request.FatPer100g;
+
+        await db.SaveChangesAsync();
+
+        return Results.Ok(ingredient);
+    }
+);
+
+// Delete ingredients //
+
+app.MapDelete(
+    "/api/ingredients/{id:guid}",
+    async (Guid id, MealPlannerDbContext db) =>
+    {
+        var ingredient = await db.Ingredients.FindAsync(id);
+
+        if (ingredient is null)
+        {
+            return Results.NotFound();
+        }
+
+        const string inUseMessage =
+            "This ingredient is used by a recipe. Remove it from those recipes first!";
+
+        var isUsed = await db.RecipeIngredients.AnyAsync(entry => entry.IngredientId == id);
+
+        if (isUsed)
+        {
+            return Results.Conflict(inUseMessage);
+        }
+
+        db.Ingredients.Remove(ingredient);
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+            when (exception.InnerException is SqliteException { SqliteExtendedErrorCode: 787 })
+        {
+            return Results.Conflict(inUseMessage);
+        }
+
+        return Results.NoContent();
+    }
+);
+
+app.MapDelete(
+    "/api/recipes/{id:guid}",
+    async (Guid id, MealPlannerDbContext db) =>
+    {
+        var recipe = await db.Recipes.FindAsync(id);
+
+        if (recipe is null)
+        {
+            return Results.NotFound();
+        }
+
+        db.Recipes.Remove(recipe);
+        await db.SaveChangesAsync();
+
+        return Results.NoContent();
+    }
+);
+
 // run the app //
 app.Run();
 
@@ -265,6 +340,32 @@ static async Task<IResult?> ValidateRecipeRequest(
     if (exisitingCount != ingredientIds.Count)
     {
         return Results.BadRequest("One or more ingredients do not exist.");
+    }
+
+    return null;
+}
+
+static IResult? ValidateIngredientRequest(CreateIngredientRequest request)
+{
+    if (string.IsNullOrWhiteSpace(request.Name))
+    {
+        return Results.BadRequest("Enter an ingredient name.");
+    }
+
+    if (request.KcalPer100g < 0)
+    {
+        return Results.BadRequest("Calories cannot be negative");
+    }
+
+    if (
+        request.ProteinPer100g is < 0 or > 100
+        || request.SugarPer100g is < 0 or > 100
+        || request.FatPer100g is < 0 or > 100
+    )
+    {
+        return Results.BadRequest(
+            "Protein, sugar, and fat must each be betweeen 0 and 100 g per 100 g."
+        );
     }
 
     return null;

@@ -12,9 +12,9 @@ import { calculateRecipeNutrition } from "./utils/nutrition";
 import { useState, useEffect, useRef } from "react";
 import NutritionBar from "./components/NutritionBar.tsx";
 
-import { getIngredients, createIngredient } from './api/ingredients'
+import { getIngredients, createIngredient, updateIngredient, deleteIngredient } from './api/ingredients'
 
-import { getRecipes, createRecipe, updateRecipe } from "./api/recipes.ts";
+import { getRecipes, createRecipe, updateRecipe, deleteRecipe } from "./api/recipes.ts";
 
 import ShoppingList from './components/ShoppingList'
 
@@ -38,6 +38,7 @@ const initialTargets = {
   protein: 180,
 };
 
+// ### Handler functions ### //
 
 function isMealPlan(value: unknown): value is Meal[] {
   return (
@@ -232,6 +233,16 @@ function App() {
     (recipe) => recipe.id === editingRecipeId,
   )
 
+  const [deletingIngredientId, setDeletingIngredientId] =
+    useState<string | null>(null)
+
+  const [ingredientDeleteError, setIngredientDeleteError] = useState('')
+
+  const [deletingRecipeId, setDeletingRecipeId] =
+    useState<string | null>(null)
+
+  const [recipeDeleteError, setRecipeDeleteError] = useState('')
+
   async function saveRecipe(draft: Omit<Recipe, 'id'>): Promise<void> {
 
     const recipeId = editingRecipeId
@@ -293,6 +304,13 @@ function App() {
     (recipe) => recipe.id === selectedRecipeId,
   )
   const [ingredientFormOpen, setIngredientFormOpen] = useState(false)
+
+  const [editingIngredientId, setEditingIngredientId] =
+    useState<string | null>(null)
+
+  const editingIngredient = ingredients.find(
+    (ingredient) => ingredient.id === editingIngredientId,
+  )
 
   const detailsRef = useRef<HTMLDialogElement>(null)
 
@@ -649,6 +667,53 @@ function App() {
     }
   }
 
+  async function removeCatalogRecipe(
+    recipeId: string,
+    recipeName: string,
+  ): Promise<void> {
+    if (deletingRecipeId !== null) {
+      return
+    }
+
+    if (!window.confirm(
+      `Permanently delete "${recipeName}" and remove it form your current meal plan?`,
+    )) {
+      return
+    }
+
+    setDeletingRecipeId(recipeId)
+    setRecipeDeleteError('')
+
+    try {
+      await deleteRecipe(recipeId)
+
+      setRecipeCatalog((current) =>
+        current.filter((recipe) => recipe.id !== recipeId),
+      )
+
+      setMeals((current) =>
+        current.map((meal) => ({
+          ...meal,
+          recipes: meal.recipes.filter(
+            (recipe) => recipe.recipeId !== recipeId,
+          ),
+        })),
+      )
+      setSelectedRecipeId((current) =>
+        current === recipeId ? null : current,
+      )
+    } catch (error) {
+      setRecipeDeleteError(
+        error instanceof Error
+          ? error.message
+          : 'Could not delete recipe.',
+      )
+    } finally {
+      setDeletingRecipeId(null)
+    }
+  }
+
+
 
 
 
@@ -717,6 +782,7 @@ function App() {
     }
   }, [meals])
 
+  { /* Async add, create ingredient functions */ }
 
   async function addIngredient(
     values: Omit<Ingredient, 'id'>,
@@ -731,6 +797,65 @@ function App() {
 
     return created
   }
+
+  async function saveIngredient(
+    values: Omit<Ingredient, 'id'>,
+  ): Promise<void> {
+    if (editingIngredientId === null) {
+
+      await addIngredient(values)
+
+    } else {
+      const updated = await updateIngredient(editingIngredientId, values)
+
+      if (!isIngredient(updated)) {
+        throw new Error("The API returned invalid ingredient data.")
+      }
+
+      setIngredients((current) =>
+        current
+          .map((ingredient) =>
+            ingredient.id === updated.id ? updated : ingredient,
+          )
+          .sort((first, second) => first.name.localeCompare(second.name)),
+      )
+    }
+
+    setIngredientFormOpen(false)
+    setEditingIngredientId(null)
+  }
+
+  async function removeIngredient(ingredient: Ingredient): Promise<void> {
+    if (deletingIngredientId !== null) {
+      return
+    }
+
+    if (!window.confirm(`Permanently delete "${ingredient.name}"?`)) {
+      return
+    }
+
+    setDeletingIngredientId(ingredient.id)
+    setIngredientDeleteError('')
+
+    try {
+      await deleteIngredient(ingredient.id)
+
+      setIngredients((current) =>
+        current.filter((item) => item.id !== ingredient.id),
+      )
+    } catch (error) {
+
+      setIngredientDeleteError(
+        error instanceof Error
+          ? error.message
+          : 'Could not delete ingredient.',
+      )
+    } finally {
+      setDeletingIngredientId(null)
+    }
+
+  }
+
 
 
   const filteredRecipes = recipes.filter((recipie) =>
@@ -995,6 +1120,8 @@ function App() {
         <section>
           <h2>Recipe catalog</h2>
 
+          {recipeDeleteError && <p role="alert">{recipeDeleteError}</p>}
+
           {availableRecipies.length < recipeCatalog.length && (
             <p role="alert">
               Some saved recipes reference ingredients that are unavailable.
@@ -1048,7 +1175,7 @@ function App() {
 
                 <button
                   type="button"
-                  disabled={recipeFormOpen}
+                  disabled={recipeFormOpen || deletingRecipeId !== null}
                   onClick={() => {
                     setEditingRecipeId(recipe.id)
                     setRecipeFromOpen(true)
@@ -1057,6 +1184,13 @@ function App() {
                   Edit
                 </button>
 
+                <button
+                  type="button"
+                  disabled={recipeFormOpen || deletingRecipeId !== null}
+                  onClick={() => void removeCatalogRecipe(recipe.id, recipe.name)}
+                >
+                  {deletingRecipeId === recipe.id ? 'Deleting...' : 'Delete'}
+                </button>
               </article>
             ))}
 
@@ -1110,7 +1244,11 @@ function App() {
         <section>
           <button
             type="button"
-            onClick={() => setIngredientFormOpen((open) => !open)}
+            disabled={deletingIngredientId !== null}
+            onClick={() => {
+              setEditingIngredientId(null)
+              setIngredientFormOpen((open) => !open)
+            }}
             aria-expanded={ingredientFormOpen}
           >
             {ingredientFormOpen ? 'Cancel' : 'New ingredient'}
@@ -1118,10 +1256,9 @@ function App() {
 
           {ingredientFormOpen && (
             <IngredientForm
-              onAdd={async (values) => {
-                await addIngredient(values)
-                setIngredientFormOpen(false)
-              }}
+              key={editingIngredientId ?? 'new'}
+              initialIngredient={editingIngredient}
+              onAdd={saveIngredient}
             />
           )}
 
@@ -1130,6 +1267,9 @@ function App() {
           {catalogsLoading && <p role="status">Loading ingredinets</p>}
           {catalogsError && <p role="alert">{catalogsError}</p>}
 
+          {ingredientDeleteError && (
+            <p role="alert">{ingredientDeleteError}</p>
+          )}
 
 
           <label>
@@ -1150,6 +1290,7 @@ function App() {
                   <th scope="col">Ingredient</th>
                   <th scope="col">Calories (kcal)</th>
                   <th scope="<col>">Proteing (g)</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1158,6 +1299,28 @@ function App() {
                     <th scope="row">{ingredient.name}</th>
                     <td>{ingredient.kcalPer100g.toFixed(0)}</td>
                     <td>{ingredient.proteinPer100g.toFixed(1)}</td>
+                    <td>
+                      <button
+                        type="button"
+                        disabled={ingredientFormOpen || deletingIngredientId !== null}
+                        onClick={() => {
+                          setEditingIngredientId(ingredient.id)
+                          setIngredientFormOpen(true)
+                        }}
+                      >
+                        Edit
+
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={ingredientFormOpen || deletingIngredientId !== null}
+                        onClick={() => void removeIngredient(ingredient)}
+                      >
+                        {deletingIngredientId === ingredient.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </td>
+
                   </tr>
                 ))}
               </tbody>
