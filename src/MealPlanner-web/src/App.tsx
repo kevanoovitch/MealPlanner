@@ -6,18 +6,24 @@ import IngredientForm from "./components/IngredientFrom.tsx";
 import RecipeFrom from "./components/RecipeForm.tsx";
 
 
-import type { Ingredient, Recipe, Meal } from "./types/mealPlanner";
+import type { Ingredient, Recipe, Meal, MealPlanSummary, SavedMealPlan as SavedMealPlan } from "./types/mealPlanner";
 import { calculateRecipeNutrition } from "./utils/nutrition";
 
 import { useState, useEffect, useRef } from "react";
 import NutritionBar from "./components/NutritionBar.tsx";
 
-import { getIngredients, createIngredient } from './api/ingredients'
+import { getIngredients, createIngredient, updateIngredient, deleteIngredient } from './api/ingredients'
 
-import { getRecipes, createRecipe, updateRecipe } from "./api/recipes.ts";
+import { getRecipes, createRecipe, updateRecipe, deleteRecipe } from "./api/recipes.ts";
 
 import ShoppingList from './components/ShoppingList'
 
+import {
+  getMealPlans,
+  getMealPlan,
+  updateMealPlan,
+  createMealPlan,
+} from './api/mealPlans'
 
 
 const initialMeals: Meal[] = [
@@ -38,6 +44,7 @@ const initialTargets = {
   protein: 180,
 };
 
+// ### Handler functions ### //
 
 function isMealPlan(value: unknown): value is Meal[] {
   return (
@@ -203,6 +210,27 @@ function isExportedMealPlan(value: unknown): value is ExportedMealPlan {
   )
 }
 
+function isMealPlanSummary(value: unknown): value is MealPlanSummary {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    value.id.trim().length > 0 &&
+    'name' in value &&
+    typeof value.name === 'string' &&
+    value.name.trim().length > 0
+  )
+}
+
+function isSavedMealPlan(value: unknown): value is SavedMealPlan {
+  return (
+    isMealPlanSummary(value) &&
+    'meals' in value &&
+    isMealPlan(value.meals) &&
+    value.meals.length > 0
+  )
+}
 
 function App() {
 
@@ -231,6 +259,30 @@ function App() {
   const editingRecipe = recipeCatalog.find(
     (recipe) => recipe.id === editingRecipeId,
   )
+
+  const [deletingIngredientId, setDeletingIngredientId] =
+    useState<string | null>(null)
+
+  const [ingredientDeleteError, setIngredientDeleteError] = useState('')
+
+  const [deletingRecipeId, setDeletingRecipeId] =
+    useState<string | null>(null)
+
+  const [recipeDeleteError, setRecipeDeleteError] = useState('')
+
+  const [savedPlans, setSavedPlans] = useState<MealPlanSummary[]>([])
+  const [selectedPlanId, setSelectedPlanId] = useState('')
+  const [plansLoading, setPlansLoading] = useState(true)
+  const [plansError, setPlansError] = useState('')
+  const [planLoading, setPlanLoading] = useState(false)
+
+  const [activePlan, setActivePlan] = useState<MealPlanSummary | null>(null)
+  const [planSaving, setPlanSaving] = useState(false)
+
+  const [newPlanName, setNewPlanName] = useState('')
+
+
+
 
   async function saveRecipe(draft: Omit<Recipe, 'id'>): Promise<void> {
 
@@ -293,6 +345,13 @@ function App() {
     (recipe) => recipe.id === selectedRecipeId,
   )
   const [ingredientFormOpen, setIngredientFormOpen] = useState(false)
+
+  const [editingIngredientId, setEditingIngredientId] =
+    useState<string | null>(null)
+
+  const editingIngredient = ingredients.find(
+    (ingredient) => ingredient.id === editingIngredientId,
+  )
 
   const detailsRef = useRef<HTMLDialogElement>(null)
 
@@ -363,6 +422,41 @@ function App() {
   }))
 
   { /* Effects */ }
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    async function loadPlans() {
+      try {
+        const data = await getMealPlans(controller.signal)
+
+        if (!Array.isArray(data) || !data.every(isMealPlanSummary)) {
+          throw new Error('The API returned invalid meal-plan data.')
+        }
+
+        if (!controller.signal.aborted) {
+          setSavedPlans(data)
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setPlansError(
+            error instanceof Error
+              ? error.message
+              : 'Could not load meal plans.'
+          )
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setPlansLoading(false)
+        }
+      }
+    }
+
+    void loadPlans()
+
+    return () => controller.abort()
+
+  }, [])
 
   useEffect(() => {
     const dialog = detailsRef.current
@@ -639,15 +733,64 @@ function App() {
       }
 
       setMeals(parsed.meals)
+      setActivePlan(null)
       setDailyTargets(parsed.dailyTargets)
       setSettingsOpen(false)
       setImportMessage('Meal plan imported.')
+
     } catch {
       setImportMessage(
         `Could not read this meal plan. Chose valid JSON export. Your current plan has not changed`
       )
     }
   }
+
+  async function removeCatalogRecipe(
+    recipeId: string,
+    recipeName: string,
+  ): Promise<void> {
+    if (deletingRecipeId !== null) {
+      return
+    }
+
+    if (!window.confirm(
+      `Permanently delete "${recipeName}" and remove it form your current meals and all saved meal plan?`,
+    )) {
+      return
+    }
+
+    setDeletingRecipeId(recipeId)
+    setRecipeDeleteError('')
+
+    try {
+      await deleteRecipe(recipeId)
+
+      setRecipeCatalog((current) =>
+        current.filter((recipe) => recipe.id !== recipeId),
+      )
+
+      setMeals((current) =>
+        current.map((meal) => ({
+          ...meal,
+          recipes: meal.recipes.filter(
+            (recipe) => recipe.recipeId !== recipeId,
+          ),
+        })),
+      )
+      setSelectedRecipeId((current) =>
+        current === recipeId ? null : current,
+      )
+    } catch (error) {
+      setRecipeDeleteError(
+        error instanceof Error
+          ? error.message
+          : 'Could not delete recipe.',
+      )
+    } finally {
+      setDeletingRecipeId(null)
+    }
+  }
+
 
 
 
@@ -717,6 +860,7 @@ function App() {
     }
   }, [meals])
 
+  { /* Async add, create ingredient functions */ }
 
   async function addIngredient(
     values: Omit<Ingredient, 'id'>,
@@ -731,6 +875,65 @@ function App() {
 
     return created
   }
+
+  async function saveIngredient(
+    values: Omit<Ingredient, 'id'>,
+  ): Promise<void> {
+    if (editingIngredientId === null) {
+
+      await addIngredient(values)
+
+    } else {
+      const updated = await updateIngredient(editingIngredientId, values)
+
+      if (!isIngredient(updated)) {
+        throw new Error("The API returned invalid ingredient data.")
+      }
+
+      setIngredients((current) =>
+        current
+          .map((ingredient) =>
+            ingredient.id === updated.id ? updated : ingredient,
+          )
+          .sort((first, second) => first.name.localeCompare(second.name)),
+      )
+    }
+
+    setIngredientFormOpen(false)
+    setEditingIngredientId(null)
+  }
+
+  async function removeIngredient(ingredient: Ingredient): Promise<void> {
+    if (deletingIngredientId !== null) {
+      return
+    }
+
+    if (!window.confirm(`Permanently delete "${ingredient.name}"?`)) {
+      return
+    }
+
+    setDeletingIngredientId(ingredient.id)
+    setIngredientDeleteError('')
+
+    try {
+      await deleteIngredient(ingredient.id)
+
+      setIngredients((current) =>
+        current.filter((item) => item.id !== ingredient.id),
+      )
+    } catch (error) {
+
+      setIngredientDeleteError(
+        error instanceof Error
+          ? error.message
+          : 'Could not delete ingredient.',
+      )
+    } finally {
+      setDeletingIngredientId(null)
+    }
+
+  }
+
 
 
   const filteredRecipes = recipes.filter((recipie) =>
@@ -757,7 +960,145 @@ function App() {
     )
   }
 
-  // ### App() return ### 
+  async function loadSelectedPlan(): Promise<void> {
+    if (!selectedPlanId || planLoading) {
+      return
+
+    }
+
+    setPlanLoading(true)
+    setPlansError('')
+
+    try {
+      const plan = await getMealPlan(selectedPlanId)
+
+      if (!isSavedMealPlan(plan)) {
+        throw new Error('The API returned invalid meal-plan data.')
+      }
+      const availableRecipeIds = new Set(
+        recipeCatalog.map((recipe) => recipe.id),
+      )
+
+      const hasMissingRecipes = plan.meals.some((meal) =>
+        meal.recipes.some(
+          (entry) => !availableRecipeIds.has(entry.recipeId),
+        ),
+      )
+
+      if (hasMissingRecipes) {
+        throw new Error(
+          'This plan contains recipes unavailable in your catalog. Refresh the page and try again.'
+        )
+      }
+
+      if (!window.confirm(
+        `Load "${plan.name}" and replace your current meals? Unsaved meal changes will be lost.`,
+      )) {
+        return
+      }
+
+      const loadedMeals = initialMeals.map((defaultMeal) => {
+        const savedMeal = plan.meals.find(
+          (meal) => meal.id === defaultMeal.id,
+        )
+
+        return savedMeal ?? {
+          ...defaultMeal,
+          recipes: [],
+        }
+      })
+
+      setMeals(loadedMeals)
+
+      setActivePlan({ id: plan.id, name: plan.name })
+
+
+    } catch (error) {
+      setPlansError(
+        error instanceof Error
+          ? error.message
+          : 'Could not load this meal plan.',
+      )
+    } finally {
+      setPlanLoading(false)
+    }
+  }
+
+  async function saveCurrentPlan(): Promise<void> {
+    if (activePlan === null || planSaving || planLoading) {
+      return
+    }
+
+    setPlanSaving(true)
+    setPlansError('')
+
+    try {
+      const saved = await updateMealPlan(activePlan.id, {
+        name: activePlan.name,
+        meals,
+      })
+
+      if (!isMealPlanSummary(saved)) {
+        throw new Error('The API returned invalid meal-plan data.')
+      }
+
+      setActivePlan(saved)
+      setSavedPlans((current) =>
+        current.map((plan) => plan.id === saved.id ? saved : plan),
+      )
+
+    } catch (error) {
+      setPlansError(
+        error instanceof Error
+          ? error.message
+          : 'Could not save this meal plan.'
+      )
+    } finally {
+      setPlanSaving(false)
+    }
+  }
+
+  async function saveAsNewPlan(): Promise<void> {
+    const name = newPlanName.trim()
+
+    if (!name || planSaving || planLoading) {
+      return
+    }
+
+    setPlanSaving(true)
+    setPlansError('')
+
+    try {
+      const saved = await createMealPlan({
+        name,
+        meals,
+      })
+
+      if (!isMealPlanSummary(saved)) {
+        throw new Error('The API returned invalid meal-plan data.')
+      }
+
+      setSavedPlans((current) =>
+        [...current, saved].sort((first, second) =>
+          first.name.localeCompare(second.name),
+        ),
+      )
+
+      setActivePlan(saved)
+      setSelectedPlanId(saved.id)
+      setNewPlanName('')
+    } catch (error) {
+      setPlansError(
+        error instanceof Error
+          ? error.message
+          : 'Could not create this meal plan.',
+      )
+    } finally {
+      setPlanSaving(false)
+    }
+  }
+
+  // ### App() return JSX ### 
 
   return (
     <main>
@@ -897,6 +1238,78 @@ function App() {
 
           {importMessage && <p role="status">{importMessage}</p>}
 
+          <div>
+            <label>
+              Saved meal plan{' '}
+              <select
+                value={selectedPlanId}
+                onChange={(event) => setSelectedPlanId(event.target.value)}
+                disabled={plansLoading || planLoading || planSaving || savedPlans.length === 0}
+              >
+                <option value="">
+                  {plansLoading ? 'Loading plans...' : 'Choose a plan'}
+                </option>
+
+                {savedPlans.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              onClick={() => void loadSelectedPlan()}
+              disabled={plansLoading || planLoading || planSaving || !selectedPlanId}
+            >
+              {planLoading ? 'Loading...' : 'Load plan'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void saveCurrentPlan()}
+              disabled={activePlan === null || planLoading || planSaving}
+            >
+              {planSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+
+            <label>
+              New plan name{' '}
+              <input
+                type="text"
+                value={newPlanName}
+                onChange={(event) => setNewPlanName(event.target.value)}
+                disabled={planLoading || planSaving}
+                placeholder="For example, Week C"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => void saveAsNewPlan()}
+              disabled={
+                plansLoading ||
+                planLoading ||
+                planSaving ||
+                !newPlanName.trim()
+              }
+            >
+              Save as new plan
+            </button>
+
+            <p>
+              {activePlan
+                ? `Editing: ${activePlan.name}`
+                : 'Current meals have not been linked to save plan.'}
+            </p>
+            {!plansLoading && !plansError && savedPlans.length === 0 && (
+              <p>No saved meal plan yet.</p>
+            )}
+
+            {plansError && <p role="alert">{plansError}</p>}
+          </div>
+
           {/* Nutrition summary Bar */}
 
           <div className="nutrition-summary">
@@ -995,6 +1408,8 @@ function App() {
         <section>
           <h2>Recipe catalog</h2>
 
+          {recipeDeleteError && <p role="alert">{recipeDeleteError}</p>}
+
           {availableRecipies.length < recipeCatalog.length && (
             <p role="alert">
               Some saved recipes reference ingredients that are unavailable.
@@ -1048,7 +1463,7 @@ function App() {
 
                 <button
                   type="button"
-                  disabled={recipeFormOpen}
+                  disabled={recipeFormOpen || deletingRecipeId !== null}
                   onClick={() => {
                     setEditingRecipeId(recipe.id)
                     setRecipeFromOpen(true)
@@ -1057,6 +1472,13 @@ function App() {
                   Edit
                 </button>
 
+                <button
+                  type="button"
+                  disabled={recipeFormOpen || deletingRecipeId !== null}
+                  onClick={() => void removeCatalogRecipe(recipe.id, recipe.name)}
+                >
+                  {deletingRecipeId === recipe.id ? 'Deleting...' : 'Delete'}
+                </button>
               </article>
             ))}
 
@@ -1110,7 +1532,11 @@ function App() {
         <section>
           <button
             type="button"
-            onClick={() => setIngredientFormOpen((open) => !open)}
+            disabled={deletingIngredientId !== null}
+            onClick={() => {
+              setEditingIngredientId(null)
+              setIngredientFormOpen((open) => !open)
+            }}
             aria-expanded={ingredientFormOpen}
           >
             {ingredientFormOpen ? 'Cancel' : 'New ingredient'}
@@ -1118,10 +1544,9 @@ function App() {
 
           {ingredientFormOpen && (
             <IngredientForm
-              onAdd={async (values) => {
-                await addIngredient(values)
-                setIngredientFormOpen(false)
-              }}
+              key={editingIngredientId ?? 'new'}
+              initialIngredient={editingIngredient}
+              onAdd={saveIngredient}
             />
           )}
 
@@ -1130,6 +1555,9 @@ function App() {
           {catalogsLoading && <p role="status">Loading ingredinets</p>}
           {catalogsError && <p role="alert">{catalogsError}</p>}
 
+          {ingredientDeleteError && (
+            <p role="alert">{ingredientDeleteError}</p>
+          )}
 
 
           <label>
@@ -1150,6 +1578,7 @@ function App() {
                   <th scope="col">Ingredient</th>
                   <th scope="col">Calories (kcal)</th>
                   <th scope="<col>">Proteing (g)</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1158,6 +1587,28 @@ function App() {
                     <th scope="row">{ingredient.name}</th>
                     <td>{ingredient.kcalPer100g.toFixed(0)}</td>
                     <td>{ingredient.proteinPer100g.toFixed(1)}</td>
+                    <td>
+                      <button
+                        type="button"
+                        disabled={ingredientFormOpen || deletingIngredientId !== null}
+                        onClick={() => {
+                          setEditingIngredientId(ingredient.id)
+                          setIngredientFormOpen(true)
+                        }}
+                      >
+                        Edit
+
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={ingredientFormOpen || deletingIngredientId !== null}
+                        onClick={() => void removeIngredient(ingredient)}
+                      >
+                        {deletingIngredientId === ingredient.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </td>
+
                   </tr>
                 ))}
               </tbody>

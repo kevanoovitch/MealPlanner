@@ -4,6 +4,7 @@ import type { Ingredient } from '../types/mealPlanner'
 
 type IngredientFromProps = {
   onAdd: (ingredient: Omit<Ingredient, 'id'>) => void | Promise<void>
+  initialIngredient?: Ingredient
 }
 
 const nutrientFields = [
@@ -13,7 +14,7 @@ const nutrientFields = [
   { name: 'fatPer100g', label: 'Fat (g)', max: 100 },
 ] as const
 
-function IngredientForm({ onAdd }: IngredientFromProps) {
+function IngredientForm({ onAdd, initialIngredient, }: IngredientFromProps) {
   const [error, setError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
@@ -70,7 +71,7 @@ function IngredientForm({ onAdd }: IngredientFromProps) {
       }
       }
     >
-      <h2>New Ingredient</h2>
+      <h2>{initialIngredient ? 'Edit ingredient' : 'New ingredient'}</h2>
       <p>Enter nutrition per 100 g from the product label.</p>
       <label>
         Ingredient Name
@@ -78,6 +79,7 @@ function IngredientForm({ onAdd }: IngredientFromProps) {
           name='name'
           required
           placeholder='Brand and product name'
+          defaultValue={initialIngredient?.name ?? ''}
         />
       </label>
 
@@ -92,6 +94,7 @@ function IngredientForm({ onAdd }: IngredientFromProps) {
               max={field.max}
               step="any"
               required
+              defaultValue={initialIngredient?.[field.name] ?? ''}
             />
           </label>
         ))
@@ -99,7 +102,7 @@ function IngredientForm({ onAdd }: IngredientFromProps) {
       {error && <p role='alert'>{error}</p>}
 
       <button type='submit' disabled={isSaving}>
-        {isSaving ? 'Saving...' : 'Add ingredient'}
+        {isSaving ? 'Saving...' : initialIngredient ? 'Save ingredient' : 'Add ingredient'}
       </button>
     </form >
 

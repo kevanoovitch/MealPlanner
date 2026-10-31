@@ -44,6 +44,67 @@ namespace MealPlanner.Api.Migrations
                     b.ToTable("Ingredients");
                 });
 
+            modelBuilder.Entity("MealPlanner.Api.Models.Meal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("MealPlanId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MealPlanId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("Meals");
+                });
+
+            modelBuilder.Entity("MealPlanner.Api.Models.MealPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MealPlans");
+                });
+
+            modelBuilder.Entity("MealPlanner.Api.Models.MealRecipe", b =>
+                {
+                    b.Property<Guid>("MealId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RecipeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("MealId", "RecipeId");
+
+                    b.HasIndex("RecipeId");
+
+                    b.ToTable("MealRecipes");
+                });
+
             modelBuilder.Entity("MealPlanner.Api.Models.Recipe", b =>
                 {
                     b.Property<Guid>("Id")
@@ -87,6 +148,30 @@ namespace MealPlanner.Api.Migrations
                     b.ToTable("RecipeIngredients");
                 });
 
+            modelBuilder.Entity("MealPlanner.Api.Models.Meal", b =>
+                {
+                    b.HasOne("MealPlanner.Api.Models.MealPlan", null)
+                        .WithMany("Meals")
+                        .HasForeignKey("MealPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MealPlanner.Api.Models.MealRecipe", b =>
+                {
+                    b.HasOne("MealPlanner.Api.Models.Meal", null)
+                        .WithMany("Recipes")
+                        .HasForeignKey("MealId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MealPlanner.Api.Models.Recipe", null)
+                        .WithMany()
+                        .HasForeignKey("RecipeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MealPlanner.Api.Models.RecipeIngredient", b =>
                 {
                     b.HasOne("MealPlanner.Api.Models.Ingredient", null)
@@ -100,6 +185,16 @@ namespace MealPlanner.Api.Migrations
                         .HasForeignKey("RecipeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("MealPlanner.Api.Models.Meal", b =>
+                {
+                    b.Navigation("Recipes");
+                });
+
+            modelBuilder.Entity("MealPlanner.Api.Models.MealPlan", b =>
+                {
+                    b.Navigation("Meals");
                 });
 
             modelBuilder.Entity("MealPlanner.Api.Models.Recipe", b =>
