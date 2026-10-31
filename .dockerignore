@@ -1,0 +1,12 @@
+.git
+**/node_modules
+**/dist
+**/bin
+**/obj
+**/wwwroot
+**/*.tsbuildinfo
+**/*.db
+**/*.db-*
+**/.env
+**/.env.*
+TUTORING.md

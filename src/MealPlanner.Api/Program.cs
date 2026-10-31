@@ -6,13 +6,27 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var databasePath = Path.Combine(builder.Environment.ContentRootPath, "mealplanner.db");
+var databasePath =
+    builder.Configuration["Database:Path"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "mealplanner.db");
 
 var connectionString = new SqliteConnectionStringBuilder { DataSource = databasePath }.ToString();
 
 builder.Services.AddDbContext<MealPlannerDbContext>(options => options.UseSqlite(connectionString));
 
 var app = builder.Build();
+
+if (app.Configuration.GetValue<bool>("Database:ApplyMigrations"))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+
+    var db = scope.ServiceProvider.GetRequiredService<MealPlannerDbContext>();
+
+    await db.Database.MigrateAsync();
+}
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 app.MapGet(
     "/api/ingredients",
@@ -298,6 +312,147 @@ app.MapDelete(
     }
 );
 
+app.MapGet(
+    "/api/meal-plans",
+    async (MealPlannerDbContext db) =>
+    {
+        var plans = await db
+            .MealPlans.AsNoTracking()
+            .OrderBy(plan => plan.Name)
+            .Select(plan => new { plan.Id, plan.Name })
+            .ToListAsync();
+
+        return Results.Ok(plans);
+    }
+);
+
+app.MapGet(
+    "/api/meal-plans/{id:guid}",
+    async (Guid id, MealPlannerDbContext db) =>
+    {
+        var plan = await db
+            .MealPlans.AsNoTracking()
+            .Where(plan => plan.Id == id)
+            .Select(plan => new
+            {
+                plan.Id,
+                plan.Name,
+                Meals = plan
+                    .Meals.OrderBy(meal => meal.DisplayOrder)
+                    .Select(meal => new
+                    {
+                        Id = meal.Key,
+                        meal.Title,
+                        Recipes = meal
+                            .Recipes.Select(entry => new { entry.RecipeId, entry.Quantity })
+                            .ToList(),
+                    })
+                    .ToList(),
+            })
+            .SingleOrDefaultAsync();
+
+        if (plan is null)
+        {
+            return Results.NotFound();
+        }
+
+        return Results.Ok(plan);
+    }
+);
+
+app.MapPost(
+    "/api/meal-plans",
+    async (SaveMealPlanRequest request, MealPlannerDbContext db) =>
+    {
+        var validationError = await ValidateMealPlanRequest(request, db);
+
+        if (validationError is not null)
+        {
+            return validationError;
+        }
+
+        var plan = new MealPlan
+        {
+            Name = request.Name.Trim(),
+            Meals = request
+                .Meals.Select(
+                    (meal, index) =>
+                        new Meal
+                        {
+                            Key = meal.Id.Trim(),
+                            Title = meal.Title.Trim(),
+                            DisplayOrder = index,
+                            Recipes = meal
+                                .Recipes.Select(entry => new MealRecipe
+                                {
+                                    RecipeId = entry.RecipeId,
+                                    Quantity = entry.Quantity,
+                                })
+                                .ToList(),
+                        }
+                )
+                .ToList(),
+        };
+        db.MealPlans.Add(plan);
+        await db.SaveChangesAsync();
+
+        return Results.Created($"/api/meal-plans/{plan.Id}", new { plan.Id, plan.Name });
+    }
+);
+
+app.MapPut(
+    "/api/meal-plans/{id:guid}",
+    async (Guid id, SaveMealPlanRequest request, MealPlannerDbContext db) =>
+    {
+        var plan = await db.MealPlans.FindAsync(id);
+
+        if (plan is null)
+        {
+            return Results.NotFound();
+        }
+
+        var validationError = await ValidateMealPlanRequest(request, db);
+
+        if (validationError is not null)
+        {
+            return validationError;
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync();
+
+        await db.Meals.Where(meal => meal.MealPlanId == id).ExecuteDeleteAsync();
+
+        plan.Name = request.Name.Trim();
+
+        var replacementMeals = request
+            .Meals.Select(
+                (meal, index) =>
+                    new Meal
+                    {
+                        MealPlanId = plan.Id,
+                        Key = meal.Id.Trim(),
+                        Title = meal.Title.Trim(),
+                        DisplayOrder = index,
+                        Recipes = meal
+                            .Recipes.Select(entry => new MealRecipe
+                            {
+                                RecipeId = entry.RecipeId,
+                                Quantity = entry.Quantity,
+                            })
+                            .ToList(),
+                    }
+            )
+            .ToList();
+
+        db.Meals.AddRange(replacementMeals);
+
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return Results.Ok(new { plan.Id, plan.Name });
+    }
+);
+
 // run the app //
 app.Run();
 
@@ -366,6 +521,71 @@ static IResult? ValidateIngredientRequest(CreateIngredientRequest request)
         return Results.BadRequest(
             "Protein, sugar, and fat must each be betweeen 0 and 100 g per 100 g."
         );
+    }
+
+    return null;
+}
+
+static async Task<IResult?> ValidateMealPlanRequest(
+    SaveMealPlanRequest request,
+    MealPlannerDbContext db
+)
+{
+    if (string.IsNullOrWhiteSpace(request.Name))
+    {
+        return Results.BadRequest("Enter a meal-plan name.");
+    }
+
+    if (request.Meals is null || request.Meals.Count == 0)
+    {
+        return Results.BadRequest("A plan needs at least one meal column.");
+    }
+
+    if (
+        request.Meals.Any(meal =>
+            meal is null
+            || string.IsNullOrWhiteSpace(meal.Id)
+            || string.IsNullOrWhiteSpace(meal.Title)
+            || meal.Recipes is null
+        )
+    )
+    {
+        return Results.BadRequest("Each meal needs an ID, title and recipe list.");
+    }
+
+    var mealKeys = request.Meals.Select(meal => meal.Id.Trim()).ToList();
+
+    if (mealKeys.Distinct().Count() != mealKeys.Count)
+    {
+        return Results.BadRequest("Meal column IDs must be unique");
+    }
+
+    foreach (var meal in request.Meals)
+    {
+        if (meal.Recipes.Any(entry => entry is null || entry.Quantity < 1))
+        {
+            return Results.BadRequest("Every planned recipe needs a positive servings quantity.");
+        }
+
+        var recipeIds = meal.Recipes.Select(entry => entry.RecipeId).ToList();
+
+        if (recipeIds.Distinct().Count() != recipeIds.Count)
+        {
+            return Results.BadRequest("A recipe can appear only once within each meal.");
+        }
+    }
+
+    var allRecipeIds = request
+        .Meals.SelectMany(meal => meal.Recipes)
+        .Select(entry => entry.RecipeId)
+        .Distinct()
+        .ToList();
+
+    var exisitingCount = await db.Recipes.CountAsync(recipe => allRecipeIds.Contains(recipe.Id));
+
+    if (exisitingCount != allRecipeIds.Count)
+    {
+        return Results.BadRequest("One or more recipes do not exist.");
     }
 
     return null;

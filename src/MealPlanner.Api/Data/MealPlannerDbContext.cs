@@ -14,6 +14,12 @@ public class MealPlannerDbContext : DbContext
 
     public DbSet<RecipeIngredient> RecipeIngredients => Set<RecipeIngredient>();
 
+    public DbSet<MealPlan> MealPlans => Set<MealPlan>();
+
+    public DbSet<Meal> Meals => Set<Meal>();
+
+    public DbSet<MealRecipe> MealRecipes => Set<MealRecipe>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -33,5 +39,30 @@ public class MealPlannerDbContext : DbContext
             .WithMany()
             .HasForeignKey(entry => entry.IngredientId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        var meal = modelBuilder.Entity<Meal>();
+
+        meal.HasIndex(entry => new { entry.MealPlanId, entry.Key }).IsUnique();
+
+        meal.HasOne<MealPlan>()
+            .WithMany(plan => plan.Meals)
+            .HasForeignKey(entry => entry.MealPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        var mealRecipe = modelBuilder.Entity<MealRecipe>();
+
+        mealRecipe.HasKey(entry => new { entry.MealId, entry.RecipeId });
+
+        mealRecipe
+            .HasOne<Meal>()
+            .WithMany(entry => entry.Recipes)
+            .HasForeignKey(entry => entry.MealId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        mealRecipe
+            .HasOne<Recipe>()
+            .WithMany()
+            .HasForeignKey(entry => entry.RecipeId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

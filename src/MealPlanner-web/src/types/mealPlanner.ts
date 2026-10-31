@@ -45,5 +45,13 @@ export type ShoppingListItem = {
   amountGrams: number
 }
 
+export type MealPlanSummary = {
+  id: string
+  name: string
+}
+
+export type SavedMealPlan = MealPlanSummary & {
+  meals: Meal[]
+}
 
 
